@@ -139,6 +139,68 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Fuzzing, invariants, and deeper adversarial testing
 - Mainnet deployment manifests and release signing
 
+
+## Testnet deploy and init playbook
+
+Testnet-only guidance for deploying the four contract packages and initializing them in dependency order. Build Wasm artifacts first with `make artifacts` (requires `wasm32v1-none` and a working `stellar-cli`).
+
+### Required accounts and environment
+
+| Item | Purpose |
+|------|---------|
+| `ADMIN_SECRET` | Secret key for the protocol admin (signs every `initialize`) |
+| `TREASURY` | Address that receives protocol fees (G... or C...) |
+| `FEE_BPS` | Protocol fee in basis points (e.g. `30` = 0.30%) |
+| `NETWORK` | Use `testnet` for this playbook |
+| `RPC_URL` | Testnet RPC, e.g. `https://soroban-testnet.stellar.org` |
+
+Fund the admin on Friendbot before deploying.
+
+```bash
+export NETWORK=testnet
+export RPC_URL=https://soroban-testnet.stellar.org
+export ADMIN_SECRET=S...
+export ADMIN_ADDR=$(stellar keys address admin)
+export TREASURY="$ADMIN_ADDR"
+export FEE_BPS=30
+```
+
+```bash
+stellar network add testnet \
+  --rpc-url "$RPC_URL" \
+  --network-passphrase "Test SDF Network ; September 2015"
+```
+
+### Build Wasm
+
+```bash
+make artifacts
+```
+
+### Deploy
+
+```bash
+PROTOCOL_ID=$(stellar contract deploy --wasm dist/protocol.wasm --source "$ADMIN_SECRET" --network "$NETWORK")
+IDENTITY_ID=$(stellar contract deploy --wasm dist/identity.wasm --source "$ADMIN_SECRET" --network "$NETWORK")
+WALLET_ID=$(stellar contract deploy --wasm dist/wallet.wasm --source "$ADMIN_SECRET" --network "$NETWORK")
+PAYMENTS_ID=$(stellar contract deploy --wasm dist/payments.wasm --source "$ADMIN_SECRET" --network "$NETWORK")
+```
+
+### Initialize in order: protocol -> identity -> wallet -> payments
+
+```bash
+stellar contract invoke --id "$PROTOCOL_ID" --source "$ADMIN_SECRET" --network "$NETWORK" -- \
+  initialize --admin "$ADMIN_ADDR" --treasury "$TREASURY" --fee_bps "$FEE_BPS"
+stellar contract invoke --id "$IDENTITY_ID" --source "$ADMIN_SECRET" --network "$NETWORK" -- \
+  initialize --admin "$ADMIN_ADDR"
+stellar contract invoke --id "$WALLET_ID" --source "$ADMIN_SECRET" --network "$NETWORK" -- \
+  initialize --admin "$ADMIN_ADDR"
+stellar contract invoke --id "$PAYMENTS_ID" --source "$ADMIN_SECRET" --network "$NETWORK" -- \
+  initialize --admin "$ADMIN_ADDR" --treasury "$TREASURY" --fee_bps "$FEE_BPS"
+```
+
+Each `initialize` is one-shot (`AlreadyInitialized` on repeat). Mainnet is out of scope for this playbook.
+
 ## Contributing
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Contributors should keep changes scoped to a clear protocol concern and include tests for any state transition, auth path, or storage behavior they modify.
