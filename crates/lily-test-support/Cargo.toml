@@ -1,5 +1,8 @@
 [package]
 name = "lily-test-support"
+description = "Test utilities and fixtures for Lily Protocol Soroban contract test suites"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

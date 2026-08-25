@@ -1,5 +1,8 @@
 [package]
 name = "wallet"
+description = "Soroban smart contract for Lily Protocol agent wallet binding and custody controls"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
