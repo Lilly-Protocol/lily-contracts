@@ -55,6 +55,21 @@ fn rejects_duplicate_registration() {
     client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
 }
 
+// Panics with ProtocolError::MissingRecord when get_profile is called for an unknown agent.
+#[test]
+#[should_panic]
+fn get_profile_rejects_unregistered_agent() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.get_profile(&agent);
+}
+
 #[test]
 fn admin_can_deactivate_profiles() {
     let env = test_env();
