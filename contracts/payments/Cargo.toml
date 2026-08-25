@@ -1,5 +1,8 @@
 [package]
 name = "payments"
+description = "Soroban payment intent and settlement contract for Lily Protocol"
+keywords = ["stellar", "soroban", "payments", "settlement", "blockchain"]
+categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

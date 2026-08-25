@@ -1,5 +1,8 @@
 [package]
 name = "identity"
+description = "Soroban agent identity registry for Lily Protocol"
+keywords = ["stellar", "soroban", "identity", "agents", "blockchain"]
+categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

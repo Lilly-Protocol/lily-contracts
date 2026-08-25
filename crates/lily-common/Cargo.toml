@@ -1,5 +1,8 @@
 [package]
 name = "lily-common"
+description = "Shared Soroban types and utilities for Lily Protocol contracts"
+keywords = ["stellar", "soroban", "smart-contracts", "blockchain", "no-std"]
+categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

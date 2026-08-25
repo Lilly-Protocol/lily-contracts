@@ -1,5 +1,8 @@
 [package]
 name = "lily-test-support"
+description = "Reusable test helpers for Lily Protocol Soroban contracts"
+keywords = ["stellar", "soroban", "testing", "smart-contracts", "blockchain"]
+categories = ["development-tools::testing"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
