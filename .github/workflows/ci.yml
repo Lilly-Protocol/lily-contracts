@@ -27,7 +27,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Show tool versions
-        run: ./scripts/check-tooling.sh
+        run: ./scripts/check-tooling.sh --strict
 
       - name: Format check
         run: make fmt-check
