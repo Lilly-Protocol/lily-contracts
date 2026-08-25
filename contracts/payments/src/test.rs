@@ -81,3 +81,35 @@ fn rejects_settle_after_cancellation() {
     client.cancel_intent(&id);
     client.settle_intent(&id, &soroban_string(&env, "tx-0002"));
 }
+
+#[test]
+#[should_panic]
+fn rejects_zero_amount_intent() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.create_intent(&payer, &payee, &0_i128, &soroban_string(&env, "zero amount"));
+}
+
+#[test]
+#[should_panic]
+fn rejects_negative_amount_intent() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.create_intent(&payer, &payee, &-1_i128, &soroban_string(&env, "negative amount"));
+}
