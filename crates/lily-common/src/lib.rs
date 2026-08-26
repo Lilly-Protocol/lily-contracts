@@ -14,8 +14,12 @@ pub const INSTANCE_BUMP_THRESHOLD: u32 = 17_280;
 pub const INSTANCE_BUMP_AMOUNT: u32 = 172_800;
 
 /// Common protocol errors used across the initial contracts.
+///
+/// New variants may be added in compatible releases. External consumers must
+/// include a wildcard arm when matching this enum.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[non_exhaustive]
 #[repr(u32)]
 pub enum ProtocolError {
     AlreadyInitialized = 1,
@@ -30,8 +34,12 @@ pub enum ProtocolError {
 }
 
 /// Shared payment status used by settlement-oriented contracts.
+///
+/// New variants may be added in compatible releases. External consumers must
+/// include a wildcard arm when matching this enum.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum PaymentStatus {
     Pending,
     Settled,
