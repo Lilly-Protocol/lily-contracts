@@ -1,0 +1,1 @@
+Solution proposal for [Bounty: $90] Align the CI stellar-cli version with soroban-sdk
