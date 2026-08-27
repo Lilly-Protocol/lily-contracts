@@ -8,9 +8,18 @@ cargo --version
 
 if command -v stellar >/dev/null 2>&1; then
   printf "stellar: "
-  stellar --version
+  STELLAR_VERSION=$(stellar --version)
+  echo "$STELLAR_VERSION"
+  
+  if echo "$STELLAR_VERSION" | grep -q -E "^(stellar )?22\."; then
+    printf "stellar-cli major version matches soroban-sdk (22): yes\n"
+  else
+    printf "ERROR: stellar-cli major version does not match soroban-sdk 22.\n"
+    exit 1
+  fi
 else
   printf "stellar: not installed\n"
+  exit 1
 fi
 
 if rustc --print target-list | grep -qx "wasm32v1-none"; then
