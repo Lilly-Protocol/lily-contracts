@@ -18,11 +18,15 @@ pub struct WalletBinding {
     pub revision: u64,
 }
 
+/// Storage keys for wallet policy configuration and agent binding records.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the wallet policy registry admin `Address`. Durability: Instance.
     Admin,
+    /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Maps an agent `Address` to their `WalletBinding` configuration. Durability: Persistent.
     Binding(Address),
 }
 

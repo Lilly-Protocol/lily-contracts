@@ -18,12 +18,17 @@ pub struct ProtocolConfig {
     pub fee_bps: u32,
 }
 
+/// Instance storage keys for protocol configuration and lifecycle state.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the active admin `Address`. Durability: Instance.
     Admin,
+    /// Stores the protocol fee collector treasury `Address`. Durability: Instance.
     Treasury,
+    /// Stores the active protocol fee in basis points (`u32`). Durability: Instance.
     FeeBps,
+    /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
 }
 

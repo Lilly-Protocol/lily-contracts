@@ -34,14 +34,21 @@ pub struct PaymentIntent {
     pub status: PaymentStatus,
 }
 
+/// Storage keys for settlement configuration and payment intent records.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the settlement admin `Address`. Durability: Instance.
     Admin,
+    /// Stores the protocol fee collector treasury `Address`. Durability: Instance.
     Treasury,
+    /// Stores the protocol fee in basis points (`u32`). Durability: Instance.
     FeeBps,
+    /// Stores the auto-incrementing `u64` identifier for next payment intent. Durability: Instance.
     NextIntentId,
+    /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Maps an intent ID (`u64`) to its `PaymentIntent` record. Durability: Persistent.
     Intent(u64),
 }
 
