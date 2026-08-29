@@ -64,3 +64,17 @@ fn updates_fee_and_treasury() {
     assert_eq!(config.fee_bps, 375);
     assert_eq!(config.treasury, new_treasury);
 }
+
+#[test]
+fn returns_schema_version() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    assert_eq!(client.schema_version(), 1);
+}
+

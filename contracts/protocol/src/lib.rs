@@ -10,6 +10,9 @@ use soroban_sdk::{
 #[contract]
 pub struct ProtocolContract;
 
+/// Protocol contract schema version.
+pub const SCHEMA_VERSION: u32 = 1;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProtocolConfig {
@@ -30,6 +33,8 @@ enum DataKey {
     FeeBps,
     /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
 }
 
 #[contractimpl]
@@ -48,6 +53,7 @@ impl ProtocolContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+        env.storage().instance().set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
 
@@ -60,6 +66,13 @@ impl ProtocolContract {
     /// Return whether the contract has been initialized.
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
+    }
+
+    /// Return the contract schema version.
+    pub fn schema_version(env: Env) -> u32 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::SchemaVersion).unwrap_or(SCHEMA_VERSION)
     }
 
     /// Fetch the current protocol configuration.

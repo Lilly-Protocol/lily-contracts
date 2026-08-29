@@ -3,7 +3,8 @@
 //! Payment intent and settlement primitives for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    bump_instance, require, require_non_whitespace, require_valid_bps, PaymentStatus,
+    ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -12,6 +13,9 @@ use soroban_sdk::{
 
 #[contract]
 pub struct PaymentsContract;
+
+/// Payments contract schema version.
+pub const SCHEMA_VERSION: u32 = 1;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -48,6 +52,8 @@ enum DataKey {
     NextIntentId,
     /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
     /// Maps an intent ID (`u64`) to its `PaymentIntent` record. Durability: Persistent.
     Intent(u64),
 }
@@ -69,10 +75,18 @@ impl PaymentsContract {
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::NextIntentId, &1_u64);
+        env.storage().instance().set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
 
         env.events().publish((symbol_short!("init"),), treasury);
+    }
+
+    /// Return the contract schema version.
+    pub fn schema_version(env: Env) -> u32 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::SchemaVersion).unwrap_or(SCHEMA_VERSION)
     }
 
     /// Return the active payments configuration.
@@ -97,7 +111,7 @@ impl PaymentsContract {
     ) -> u64 {
         ensure_initialized(&env);
         require(&env, amount > 0, ProtocolError::InvalidInput);
-        require_non_empty(&env, memo.len());
+        require_non_whitespace(&env, &memo);
 
         payer_agent.require_auth();
 
@@ -123,7 +137,7 @@ impl PaymentsContract {
     /// Mark a payment intent as settled.
     pub fn settle_intent(env: Env, intent_id: u64, settlement_reference: String) {
         ensure_initialized(&env);
-        require_non_empty(&env, settlement_reference.len());
+        require_non_whitespace(&env, &settlement_reference);
 
         let admin = get_admin(&env);
         admin.require_auth();
