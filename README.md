@@ -129,6 +129,9 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
 
+See [Contract Testing](./docs/TESTING.md) for guidance on mock authorization,
+real-auth negative tests, and the current authorization coverage debt.
+
 ## Future protocol areas intentionally left for follow-up
 
 - On-chain agent reputation and credential attestations
