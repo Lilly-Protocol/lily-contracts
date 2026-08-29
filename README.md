@@ -141,7 +141,11 @@ This repository intentionally ships a real, reviewable foundation without premat
 
 ## Contributing
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Contributors should keep changes scoped to a clear protocol concern and include tests for any state transition, auth path, or storage behavior they modify.
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request and
+review the project's [CHANGELOG.md](./CHANGELOG.md) for unreleased contract and
+tooling changes. Contributors should keep changes scoped to a clear protocol
+concern and include tests for any state transition, auth path, or storage
+behavior they modify.
 
 ## Security
 

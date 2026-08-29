@@ -45,6 +45,18 @@ Please include:
 - Test coverage summary
 - Follow-up work if the change intentionally leaves gaps
 
+## Changelog
+
+Update the `Unreleased` section in [CHANGELOG.md](./CHANGELOG.md) when a pull
+request changes contract behavior, storage, events, authorization, public APIs,
+deployment workflows, or other contributor-visible tooling. Add entries under
+the appropriate Keep a Changelog heading (`Added`, `Changed`, `Deprecated`,
+`Removed`, `Fixed`, or `Security`) and describe the user-visible effect rather
+than the implementation details.
+
+Documentation-only changes that do not affect users or contributors do not need
+a changelog entry.
+
 ## Security reporting
 
 Do not open public issues for exploitable vulnerabilities. Until a dedicated security channel is published, contact the Lily Protocol maintainers privately and include reproduction steps, impact, and affected contracts.
