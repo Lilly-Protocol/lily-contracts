@@ -16,6 +16,11 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 3. Install the Wasm target with `rustup target add wasm32v1-none`.
 4. Run `make fmt`, `make lint`, and `make test` before opening a PR.
 
+## Lockfile & Deterministic Builds
+
+All `cargo` invocations in the `Makefile` and CI use `--locked` to ensure builds are completely reproducible against `Cargo.lock`.
+If you modify dependencies in `Cargo.toml`, you must explicitly update the lockfile via `cargo update` or `cargo check` before committing, otherwise `--locked` builds in CI will fail with a stale-lockfile error.
+
 ## Repository conventions
 
 - `contracts/` contains deployable Soroban contracts.
