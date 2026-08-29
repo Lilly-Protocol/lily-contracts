@@ -98,3 +98,18 @@ fn rejects_zero_amount_intent() {
     client.create_intent(&payer, &payee, &0_i128, &soroban_string(&env, "invalid zero amount"));
 }
 
+#[test]
+#[should_panic]
+fn rejects_get_intent_on_missing_record() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.get_intent(&999_u64);
+}
+
+
