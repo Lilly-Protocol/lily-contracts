@@ -8,6 +8,9 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 #[contract]
 pub struct WalletContract;
 
+/// Wallet contract schema version.
+pub const SCHEMA_VERSION: u32 = 1;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalletBinding {
@@ -26,6 +29,8 @@ enum DataKey {
     Admin,
     /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
     /// Maps an agent `Address` to their `WalletBinding` configuration. Durability: Persistent.
     Binding(Address),
 }
@@ -41,9 +46,17 @@ impl WalletContract {
         );
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
         env.events().publish((symbol_short!("init"),), admin);
+    }
+
+    /// Return the contract schema version.
+    pub fn schema_version(env: Env) -> u32 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::SchemaVersion).unwrap_or(SCHEMA_VERSION)
     }
 
     /// Bind an agent to a settlement wallet and policy envelope.
@@ -102,6 +115,18 @@ impl WalletContract {
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
         env.events().publish((symbol_short!("state"), agent), binding);
+    }
+
+    /// Unbind an agent wallet and release the persistent storage record.
+    pub fn unbind_wallet(env: Env, agent: Address) {
+        ensure_initialized(&env);
+        agent.require_auth();
+
+        let binding = get_binding_internal(&env, &agent);
+        let key = DataKey::Binding(agent.clone());
+        env.storage().persistent().remove(&key);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("unbind"), agent), binding);
     }
 
     /// Read the current binding for an agent.

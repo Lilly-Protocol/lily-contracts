@@ -2,10 +2,16 @@
 
 //! Shared Soroban primitives used across Lily Protocol contracts.
 
-use soroban_sdk::{contracterror, contracttype, panic_with_error, Env};
+use soroban_sdk::{contracterror, contracttype, panic_with_error, Env, String};
 
 /// Maximum basis points accepted by percentage-based configuration.
 pub const MAX_BPS: u32 = 10_000;
+
+/// Maximum length accepted for string metadata/reference fields.
+pub const MAX_STRING_LEN: u32 = 1024;
+
+/// Default schema version for Lily Protocol contracts.
+pub const DEFAULT_SCHEMA_VERSION: u32 = 1;
 
 /// TTL threshold used when refreshing instance storage.
 pub const INSTANCE_BUMP_THRESHOLD: u32 = 17_280;
@@ -50,12 +56,33 @@ pub fn require_non_empty(env: &Env, len: u32) {
     require(env, len > 0, ProtocolError::InvalidInput);
 }
 
+/// Reject empty or whitespace-only Soroban strings for storage-bound metadata and reference fields.
+pub fn require_non_whitespace(env: &Env, s: &String) {
+    let len = s.len();
+    require(env, len > 0 && len <= MAX_STRING_LEN, ProtocolError::InvalidInput);
+    let mut buf = [0u8; MAX_STRING_LEN as usize];
+    s.copy_into_slice(&mut buf[..len as usize]);
+    let has_non_whitespace = buf[..len as usize]
+        .iter()
+        .any(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0B | 0x0C));
+    require(env, has_non_whitespace, ProtocolError::InvalidInput);
+}
+
 /// Reject fee values greater than 100%.
 pub fn require_valid_bps(env: &Env, fee_bps: u32) {
     require(env, fee_bps <= MAX_BPS, ProtocolError::FeeBpsTooHigh);
+}
+
+/// Guard schema version compatibility.
+pub fn require_compatible_schema(env: &Env, actual_version: u32, expected_version: u32) {
+    require(env, actual_version == expected_version, ProtocolError::InvalidInput);
 }
 
 /// Keep instance storage alive for long-lived protocol state.
 pub fn bump_instance(env: &Env) {
     env.storage().instance().extend_ttl(INSTANCE_BUMP_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
+
+#[cfg(test)]
+mod test;
+
