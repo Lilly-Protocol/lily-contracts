@@ -96,3 +96,17 @@ fn rejects_update_on_deactivated_profile() {
     );
 }
 
+#[test]
+#[should_panic]
+fn rejects_get_profile_on_unregistered_agent() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let unknown_agent = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.get_profile(&unknown_agent);
+}
+
