@@ -33,6 +33,7 @@ check:
 
 test:
 	cargo test --workspace
+	./scripts/test-check-tooling.sh
 
 build:
 	cargo build --workspace
