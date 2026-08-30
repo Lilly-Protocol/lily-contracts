@@ -64,3 +64,59 @@ fn updates_fee_and_treasury() {
     assert_eq!(config.fee_bps, 375);
     assert_eq!(config.treasury, new_treasury);
 }
+
+#[test]
+fn initialize_accepts_fee_bps_zero() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &0_u32);
+    assert_eq!(client.get_config().fee_bps, 0);
+}
+
+#[test]
+fn initialize_accepts_fee_bps_max() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &10_000_u32);
+    assert_eq!(client.get_config().fee_bps, 10_000);
+}
+
+#[test]
+fn set_fee_bps_accepts_zero_and_max() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    client.set_fee_bps(&0_u32);
+    assert_eq!(client.get_config().fee_bps, 0);
+    client.set_fee_bps(&10_000_u32);
+    assert_eq!(client.get_config().fee_bps, 10_000);
+}
+
+#[test]
+#[should_panic]
+fn set_fee_bps_rejects_above_max() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    client.set_fee_bps(&10_001_u32);
+}
