@@ -1,7 +1,19 @@
 #![cfg(test)]
 
+extern crate alloc;
+
 use super::{AgentProfile, IdentityContract, IdentityContractClient};
 use lily_test_support::{soroban_string, test_address, test_env};
+use soroban_sdk::{testutils::Events, Symbol, TryIntoVal};
+use alloc::vec::Vec;
+
+fn event_has_topic(env: &soroban_sdk::Env, topics: &soroban_sdk::Vec<soroban_sdk::Val>, name: &str) -> bool {
+    if topics.len() < 1 {
+        return false;
+    }
+    let topic0: Symbol = topics.get(0).unwrap().try_into_val(env).unwrap();
+    topic0 == Symbol::new(env, name)
+}
 
 #[test]
 fn registers_and_updates_profiles() {
@@ -37,6 +49,130 @@ fn registers_and_updates_profiles() {
     let updated = client.get_profile(&agent);
     assert_eq!(updated.controller, new_controller);
     assert_eq!(updated.revision, 1);
+}
+
+#[test]
+fn emits_both_events_when_metadata_and_controller_change() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+    let new_controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile-v1"));
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v2"),
+        &Some(new_controller),
+    );
+
+    let events = env.events().all();
+    let metadata_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
+        .collect();
+    assert_eq!(metadata_events.len(), 1);
+
+    let rotate_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
+        .collect();
+    assert_eq!(rotate_events.len(), 1);
+}
+
+#[test]
+fn emits_only_metadata_updated_when_controller_unchanged() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile-v1"));
+
+    client.update_profile(&agent, &soroban_string(&env, "ipfs://profile-v2"), &None);
+
+    let events = env.events().all();
+    let metadata_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
+        .collect();
+    assert_eq!(metadata_events.len(), 1);
+
+    let rotate_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
+        .collect();
+    assert_eq!(rotate_events.len(), 0);
+}
+
+#[test]
+fn emits_only_controller_rotated_when_metadata_unchanged() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+    let new_controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile-v1"));
+
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v1"),
+        &Some(new_controller.clone()),
+    );
+
+    let events = env.events().all();
+    let metadata_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
+        .collect();
+    assert_eq!(metadata_events.len(), 0);
+
+    let rotate_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
+        .collect();
+    assert_eq!(rotate_events.len(), 1);
+}
+
+#[test]
+fn emits_no_update_events_when_nothing_changes() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile-v1"));
+    client.update_profile(&agent, &soroban_string(&env, "ipfs://profile-v1"), &None);
+
+    let events = env.events().all();
+    let metadata_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
+        .collect();
+    assert_eq!(metadata_events.len(), 0);
+
+    let rotate_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
+        .collect();
+    assert_eq!(rotate_events.len(), 0);
 }
 
 #[test]
