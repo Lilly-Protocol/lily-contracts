@@ -985,6 +985,7 @@ version = "0.1.0"
 dependencies = [
  "lily-common",
  "lily-test-support",
+ "payments",
  "soroban-sdk",
 ]
 
