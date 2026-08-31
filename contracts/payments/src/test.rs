@@ -3,7 +3,30 @@
 use lily_common::PaymentStatus;
 use lily_test_support::{soroban_string, test_address, test_env};
 
-use super::{PaymentIntent, PaymentsContract, PaymentsContractClient};
+use super::{PaymentIntent, PaymentsConfig, PaymentsContract, PaymentsContractClient};
+
+#[test]
+fn initializes_and_exposes_config() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+
+    let config = client.get_config();
+    assert_eq!(
+        config,
+        PaymentsConfig {
+            admin: admin.clone(),
+            treasury: treasury.clone(),
+            fee_bps: 50,
+            next_intent_id: 1,
+        }
+    );
+}
 
 #[test]
 fn creates_and_settles_payment_intents() {

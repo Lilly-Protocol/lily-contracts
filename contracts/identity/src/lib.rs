@@ -21,6 +21,12 @@ pub struct AgentProfile {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdentityConfig {
+    pub admin: Address,
+}
+
+#[contracttype]
 #[derive(Clone)]
 enum DataKey {
     Admin,
@@ -41,7 +47,7 @@ impl IdentityContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
-        env.events().publish((symbol_short!("init"),), admin);
+        env.events().publish((symbol_short!("init"), admin.clone()), IdentityConfig { admin });
     }
 
     /// Register a new agent profile controlled by a specific address.
@@ -108,6 +114,13 @@ impl IdentityContract {
         ensure_initialized(&env);
         bump_instance(&env);
         get_profile_internal(&env, &agent)
+    }
+
+    /// Fetch the identity registry configuration.
+    pub fn get_config(env: Env) -> IdentityConfig {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        IdentityConfig { admin: get_admin(&env) }
     }
 }
 
