@@ -2,21 +2,11 @@
 
 //! Global protocol configuration contract for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_valid_bps, ProtocolError};
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
-};
+use lily_common::{bump_instance, read_instance, require, require_valid_bps, ProtocolConfig, ProtocolError};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
 
 #[contract]
 pub struct ProtocolContract;
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProtocolConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
-}
 
 #[contracttype]
 #[derive(Clone)]
@@ -61,11 +51,10 @@ impl ProtocolContract {
     pub fn get_config(env: Env) -> ProtocolConfig {
         ensure_initialized(&env);
         bump_instance(&env);
-
         ProtocolConfig {
-            admin: get_admin(&env),
-            treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
-            fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
+            admin: read_instance(&env, DataKey::Admin),
+            treasury: read_instance(&env, DataKey::Treasury),
+            fee_bps: read_instance(&env, DataKey::FeeBps),
         }
     }
 
@@ -116,7 +105,7 @@ fn ensure_initialized(env: &Env) {
 }
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    read_instance(env, DataKey::Admin)
 }
 
 mod test;

@@ -25,6 +25,13 @@ fn creates_and_settles_payment_intents() {
     );
 
     assert_eq!(id, 1);
+    assert_eq!(client.get_next_intent_id(), 2);
+
+    let config = client.get_config();
+    assert_eq!(config.admin, admin);
+    assert_eq!(config.treasury, treasury);
+    assert_eq!(config.fee_bps, 50);
+
     let intent = client.get_intent(&id);
     assert_eq!(
         intent,

@@ -3,7 +3,8 @@
 //! Payment intent and settlement primitives for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    bump_instance, read_instance, require, require_non_empty, require_valid_bps, PaymentStatus,
+    ProtocolConfig, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -12,15 +13,6 @@ use soroban_sdk::{
 
 #[contract]
 pub struct PaymentsContract;
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PaymentsConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
-    pub next_intent_id: u64,
-}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,16 +60,22 @@ impl PaymentsContract {
         env.events().publish((symbol_short!("init"),), treasury);
     }
 
-    /// Return the active payments configuration.
-    pub fn get_config(env: Env) -> PaymentsConfig {
+    /// Return the active payments protocol configuration.
+    pub fn get_config(env: Env) -> ProtocolConfig {
         ensure_initialized(&env);
         bump_instance(&env);
-        PaymentsConfig {
-            admin: get_admin(&env),
-            treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
-            fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
-            next_intent_id: env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized(),
+        ProtocolConfig {
+            admin: read_instance(&env, DataKey::Admin),
+            treasury: read_instance(&env, DataKey::Treasury),
+            fee_bps: read_instance(&env, DataKey::FeeBps),
         }
+    }
+
+    /// Return the next intent id counter.
+    pub fn get_next_intent_id(env: Env) -> u64 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        read_instance(&env, DataKey::NextIntentId)
     }
 
     /// Create a payment intent that can be settled asynchronously.
@@ -170,7 +168,7 @@ fn ensure_initialized(env: &Env) {
 }
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    read_instance(env, DataKey::Admin)
 }
 
 fn get_intent_internal(env: &Env, intent_id: u64) -> PaymentIntent {
