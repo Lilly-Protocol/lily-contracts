@@ -1,0 +1,47 @@
+name: Release Wasm Artifacts
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  publish-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Install Stellar CLI
+        uses: stellar/stellar-cli@v23.0.1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Wasm artifacts
+        run: make artifacts
+
+      - name: Record artifact provenance
+        run: |
+          sha256sum dist/*.wasm > dist/SHA256SUMS
+          printf 'release=%s\ncommit=%s\n' \
+            '${{ github.event.release.tag_name }}' \
+            "$GITHUB_SHA" > dist/BUILD_INFO
+
+      - name: Attach artifacts to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload '${{ github.event.release.tag_name }}' \
+            dist/*.wasm dist/SHA256SUMS dist/BUILD_INFO \
+            --clobber

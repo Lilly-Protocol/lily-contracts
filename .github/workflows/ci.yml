@@ -39,4 +39,17 @@ jobs:
         run: make test
 
       - name: Build Wasm artifacts
-        run: make build-wasm
+        run: make artifacts
+
+      - name: Record artifact provenance
+        run: |
+          sha256sum dist/*.wasm > dist/SHA256SUMS
+          printf 'commit=%s\n' "$GITHUB_SHA" > dist/BUILD_INFO
+
+      - name: Upload Wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lily-contracts-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
