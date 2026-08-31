@@ -26,7 +26,7 @@ fmt-check:
 	cargo fmt --all --check
 
 lint:
-	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings -W clippy::pedantic -A clippy::must_use_candidate -A clippy::needless_pass_by_value -A clippy::similar_names -A clippy::missing_panics_doc -A clippy::should_panic_without_expect
 
 check:
 	cargo check --workspace
