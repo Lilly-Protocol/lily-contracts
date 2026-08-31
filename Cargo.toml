@@ -13,6 +13,9 @@ repository = "https://github.com/lily-protocol/lily-contracts"
 homepage = "https://lilyprotocol.com"
 authors = ["Lily Protocol Contributors"]
 rust-version = "1.83"
+# #98: shared publishing metadata inherited by every workspace crate.
+keywords = ["soroban", "stellar", "smart-contract", "lily-protocol"]
+categories = ["no-std", "external-ffi"]
 
 [workspace.dependencies]
 soroban-sdk = "22"

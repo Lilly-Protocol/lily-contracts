@@ -59,3 +59,50 @@ pub fn require_valid_bps(env: &Env, fee_bps: u32) {
 pub fn bump_instance(env: &Env) {
     env.storage().instance().extend_ttl(INSTANCE_BUMP_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::Env;
+
+    #[test]
+    fn require_true_does_not_panic() {
+        let env = Env::default();
+        require(&env, true, ProtocolError::Unauthorized);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn require_false_panics_with_typed_error() {
+        let env = Env::default();
+        require(&env, false, ProtocolError::Unauthorized);
+    }
+
+    #[test]
+    fn require_non_empty_accepts_nonzero() {
+        let env = Env::default();
+        require_non_empty(&env, 1);
+        require_non_empty(&env, 65_536);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn require_non_empty_rejects_zero() {
+        let env = Env::default();
+        require_non_empty(&env, 0);
+    }
+
+    #[test]
+    fn require_valid_bps_accepts_boundaries() {
+        let env = Env::default();
+        require_valid_bps(&env, 0);
+        require_valid_bps(&env, MAX_BPS);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #5)")]
+    fn require_valid_bps_rejects_above_max() {
+        let env = Env::default();
+        require_valid_bps(&env, MAX_BPS + 1);
+    }
+}
