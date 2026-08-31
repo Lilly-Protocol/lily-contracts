@@ -59,3 +59,38 @@ pub fn require_valid_bps(env: &Env, fee_bps: u32) {
 pub fn bump_instance(env: &Env) {
     env.storage().instance().extend_ttl(INSTANCE_BUMP_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 }
+
+#[cfg(test)]
+extern crate std;
+
+#[cfg(test)]
+mod tests {
+    use super::{require_valid_bps, Env, MAX_BPS};
+    use proptest::prelude::*;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    fn validation_panics(fee_bps: u32) -> bool {
+        let env = Env::default();
+        catch_unwind(AssertUnwindSafe(|| require_valid_bps(&env, fee_bps))).is_err()
+    }
+
+    proptest! {
+        #[test]
+        fn accepts_every_basis_point_value_through_the_maximum(fee_bps in 0..=MAX_BPS) {
+            prop_assert!(!validation_panics(fee_bps));
+        }
+
+        #[test]
+        fn rejects_every_basis_point_value_above_the_maximum(
+            fee_bps in (MAX_BPS + 1)..=u32::MAX,
+        ) {
+            prop_assert!(validation_panics(fee_bps));
+        }
+    }
+
+    #[test]
+    fn validates_the_exact_basis_point_boundary() {
+        assert!(!validation_panics(10_000));
+        assert!(validation_panics(10_001));
+    }
+}
