@@ -69,3 +69,36 @@ fn rejects_zero_spend_limit() {
     client.initialize(&admin);
     client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &0_i128);
 }
+
+#[test]
+#[should_panic]
+fn rejects_zero_spend_limit_update() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let wallet = test_address(&env);
+
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+    client.update_spend_limit(&agent, &0_i128);
+}
+
+#[test]
+#[should_panic]
+fn rejects_negative_spend_limit_update() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let wallet = test_address(&env);
+
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+    client.update_spend_limit(&agent, &-1_i128);
+}
+
