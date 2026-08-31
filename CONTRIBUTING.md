@@ -16,6 +16,12 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 3. Install the Wasm target with `rustup target add wasm32v1-none`.
 4. Run `make fmt`, `make lint`, and `make test` before opening a PR.
 
+## Toolchain and MSRV
+
+- The workspace declares `rust-version = "1.83"` in the root `Cargo.toml`. This is the Minimum Supported Rust Version (MSRV); builds must compile on Rust 1.83 and later.
+- CI uses the latest stable toolchain via `dtolnay/rust-toolchain@stable`. Locally you can use stable as long as it is >= 1.83.
+- Contract Wasm builds require the `wasm32v1-none` target. If `make build-wasm` fails with a missing target error, run `rustup target add wasm32v1-none`.
+
 ## Repository conventions
 
 - `contracts/` contains deployable Soroban contracts.
