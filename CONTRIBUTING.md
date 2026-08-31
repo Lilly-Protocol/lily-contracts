@@ -11,9 +11,9 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 
 ## Local setup
 
-1. Install Rust and verify `cargo --version`.
+1. Install Rust. The repository pins the toolchain in `rust-toolchain.toml` (currently Rust 1.83), so `rustup` will automatically install the correct version when you run any cargo command in the workspace.
 2. Install `stellar-cli` using the official Stellar instructions.
-3. Install the Wasm target with `rustup target add wasm32v1-none`.
+3. The Wasm target `wasm32v1-none` is declared in `rust-toolchain.toml`, so it will be installed automatically. If you prefer to install it manually, run `rustup target add wasm32v1-none`.
 4. Run `make fmt`, `make lint`, and `make test` before opening a PR.
 
 ## Repository conventions
