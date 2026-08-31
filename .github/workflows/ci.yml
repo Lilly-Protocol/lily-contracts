@@ -39,4 +39,25 @@ jobs:
         run: make test
 
       - name: Build Wasm artifacts
-        run: make build-wasm
+        run: make artifacts
+
+      - name: Record artifact provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)"
+          printf 'version=%s\ncommit=%s\nprofile=release\n' "$VERSION" "$GITHUB_SHA" > dist/PROVENANCE.txt
+          (
+            cd dist
+            sha256sum *.wasm > SHA256SUMS
+          )
+
+      - name: Upload Wasm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lily-wasm-${{ github.sha }}
+          path: |
+            dist/*.wasm
+            dist/SHA256SUMS
+            dist/PROVENANCE.txt
+          if-no-files-found: error
