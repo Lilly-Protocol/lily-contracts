@@ -89,12 +89,19 @@ impl IdentityContract {
     }
 
     /// Disable an agent profile through admin action.
+    ///
+    /// Repeated calls on an already inactive profile are a no-op and do not
+    /// increment the revision or emit an event.
     pub fn deactivate(env: Env, agent: Address) {
         ensure_initialized(&env);
         let admin = get_admin(&env);
         admin.require_auth();
 
         let mut profile = get_profile_internal(&env, &agent);
+        if !profile.active {
+            bump_instance(&env);
+            return;
+        }
         profile.active = false;
         profile.revision += 1;
 

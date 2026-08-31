@@ -73,3 +73,25 @@ fn admin_can_deactivate_profiles() {
     assert!(!profile.active);
     assert_eq!(profile.revision, 1);
 }
+
+#[test]
+fn deactivation_is_idempotent() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+
+    client.deactivate(&agent);
+    client.deactivate(&agent);
+    client.deactivate(&agent);
+
+    let profile = client.get_profile(&agent);
+    assert!(!profile.active);
+    assert_eq!(profile.revision, 1);
+}
