@@ -5,10 +5,7 @@
 use lily_common::{
     bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
 };
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
-    String,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String};
 
 #[contract]
 pub struct PaymentsContract;
@@ -74,9 +71,9 @@ impl PaymentsContract {
         bump_instance(&env);
         PaymentsConfig {
             admin: get_admin(&env),
-            treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
-            fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
-            next_intent_id: env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized(),
+            treasury: get_treasury(&env),
+            fee_bps: get_fee_bps(&env),
+            next_intent_id: get_next_intent_id(&env),
         }
     }
 
@@ -94,7 +91,7 @@ impl PaymentsContract {
 
         payer_agent.require_auth();
 
-        let id: u64 = env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized();
+        let id: u64 = get_next_intent_id(&env);
 
         let intent = PaymentIntent {
             id,
@@ -170,7 +167,31 @@ fn ensure_initialized(env: &Env) {
 }
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::MissingRecord))
+}
+
+fn get_treasury(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Treasury)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::MissingRecord))
+}
+
+fn get_fee_bps(env: &Env) -> u32 {
+    env.storage()
+        .instance()
+        .get(&DataKey::FeeBps)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::MissingRecord))
+}
+
+fn get_next_intent_id(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&DataKey::NextIntentId)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::MissingRecord))
 }
 
 fn get_intent_internal(env: &Env, intent_id: u64) -> PaymentIntent {

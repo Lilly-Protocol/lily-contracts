@@ -66,6 +66,15 @@ fn payer_can_cancel_pending_intents() {
 
 #[test]
 #[should_panic]
+fn rejects_config_read_before_initialization() {
+    let env = test_env();
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+    client.get_config();
+}
+
+#[test]
+#[should_panic]
 fn rejects_settle_after_cancellation() {
     let env = test_env();
     let admin = test_address(&env);

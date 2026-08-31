@@ -3,9 +3,7 @@
 //! Global protocol configuration contract for Lily Protocol.
 
 use lily_common::{bump_instance, require, require_valid_bps, ProtocolError};
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
 
 #[contract]
 pub struct ProtocolContract;
@@ -64,8 +62,8 @@ impl ProtocolContract {
 
         ProtocolConfig {
             admin: get_admin(&env),
-            treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
-            fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
+            treasury: get_treasury(&env),
+            fee_bps: get_fee_bps(&env),
         }
     }
 
@@ -116,7 +114,24 @@ fn ensure_initialized(env: &Env) {
 }
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::MissingRecord))
+}
+
+fn get_treasury(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Treasury)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::MissingRecord))
+}
+
+fn get_fee_bps(env: &Env) -> u32 {
+    env.storage()
+        .instance()
+        .get(&DataKey::FeeBps)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::MissingRecord))
 }
 
 mod test;
