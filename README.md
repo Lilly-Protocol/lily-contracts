@@ -104,6 +104,12 @@ You can inspect the local toolchain status with:
 ./scripts/check-tooling.sh
 ```
 
+You can spin up a local Stellar standalone network for development:
+
+```bash
+./scripts/bootstrap-local.sh
+```
+
 ## Common development commands
 
 ```bash
