@@ -14,6 +14,7 @@ pub const INSTANCE_BUMP_THRESHOLD: u32 = 17_280;
 pub const INSTANCE_BUMP_AMOUNT: u32 = 172_800;
 
 /// Common protocol errors used across the initial contracts.
+#[non_exhaustive]
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -30,6 +31,7 @@ pub enum ProtocolError {
 }
 
 /// Shared payment status used by settlement-oriented contracts.
+#[non_exhaustive]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaymentStatus {
