@@ -116,6 +116,7 @@ make build
 make build-wasm
 make artifacts
 make ci
+make check-wasm-size
 ```
 
 ## Contract development approach

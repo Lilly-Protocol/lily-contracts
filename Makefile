@@ -4,20 +4,21 @@ CONTRACT_PACKAGES := protocol identity wallet payments
 WASM_TARGET := wasm32v1-none
 ARTIFACTS_DIR := dist
 
-.PHONY: fmt fmt-check lint check test build build-wasm artifacts ci clean help
+.PHONY: fmt fmt-check lint check test build build-wasm artifacts check-wasm-size ci clean help
 
 help:
 	@printf "%s\n" \
-	"make fmt        - format the workspace" \
-	"make fmt-check  - verify formatting" \
-	"make lint       - run clippy with warnings denied" \
-	"make check      - cargo check across the workspace" \
-	"make test       - run all unit and integration-style tests" \
-	"make build      - build the workspace" \
-	"make build-wasm - compile all contract packages to Wasm" \
-	"make artifacts  - copy optimized Wasm artifacts into dist/" \
-	"make ci         - local CI bundle (fmt-check, lint, test)" \
-	"make clean      - remove build outputs"
+	"make fmt            - format the workspace" \
+	"make fmt-check      - verify formatting" \
+	"make lint           - run clippy with warnings denied" \
+	"make check          - cargo check across the workspace" \
+	"make test           - run all unit and integration-style tests" \
+	"make build          - build the workspace" \
+	"make build-wasm     - compile all contract packages to Wasm" \
+	"make artifacts      - copy optimized Wasm artifacts into dist/" \
+	"make check-wasm-size - compare Wasm sizes against committed baseline" \
+	"make ci             - local CI bundle (fmt-check, lint, test, build-wasm, check-wasm-size)" \
+	"make clean          - remove build outputs"
 
 fmt:
 	cargo fmt --all
@@ -52,7 +53,10 @@ artifacts: build-wasm
 		cp target/$(WASM_TARGET)/release/$$pkg.wasm $(ARTIFACTS_DIR)/$$pkg.wasm; \
 	done
 
-ci: fmt-check lint test
+check-wasm-size: build-wasm
+	./scripts/check-wasm-size.sh
+
+ci: fmt-check lint test check-wasm-size
 
 clean:
 	rm -rf target $(ARTIFACTS_DIR)
