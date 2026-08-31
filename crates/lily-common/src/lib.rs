@@ -27,6 +27,7 @@ pub enum ProtocolError {
     MissingRecord = 7,
     PaymentAlreadyFinalized = 8,
     WalletAlreadyBound = 9,
+    Overflow = 10,
 }
 
 /// Shared payment status used by settlement-oriented contracts.
@@ -55,6 +56,16 @@ pub fn require_valid_bps(env: &Env, fee_bps: u32) {
     require(env, fee_bps <= MAX_BPS, ProtocolError::FeeBpsTooHigh);
 }
 
+/// Increment a u64 counter, mapping overflow to `ProtocolError::Overflow`.
+#[must_use]
+#[inline]
+pub fn checked_inc(env: &Env, value: u64) -> u64 {
+    match value.checked_add(1) {
+        Some(next) => next,
+        None => panic_with_error!(env, ProtocolError::Overflow),
+    }
+}
+
 /// Keep instance storage alive for long-lived protocol state.
 pub fn bump_instance(env: &Env) {
     env.storage().instance().extend_ttl(INSTANCE_BUMP_THRESHOLD, INSTANCE_BUMP_AMOUNT);
@@ -64,6 +75,21 @@ pub fn bump_instance(env: &Env) {
 mod tests {
     use super::*;
     use soroban_sdk::Env;
+
+    #[test]
+    fn checked_inc_increments() {
+        let env = Env::default();
+        assert_eq!(checked_inc(&env, 0), 1);
+        assert_eq!(checked_inc(&env, u64::MAX - 1), u64::MAX);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #10)")]
+    fn checked_inc_overflow_panics_typed_error() {
+        let env = Env::default();
+        assert_eq!(checked_inc(&env, u64::MAX - 1), u64::MAX);
+        let _ = checked_inc(&env, u64::MAX);
+    }
 
     #[test]
     fn require_true_does_not_panic() {

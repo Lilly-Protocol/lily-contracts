@@ -2,7 +2,7 @@
 
 //! Agent wallet binding and policy contract.
 
-use lily_common::{bump_instance, require, ProtocolError};
+use lily_common::{bump_instance, checked_inc, require, ProtocolError};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
 
 #[contract]
@@ -79,7 +79,7 @@ impl WalletContract {
         let mut binding = get_binding_internal(&env, &agent);
         require(&env, binding.enabled, ProtocolError::InvalidInput);
         binding.spend_limit = spend_limit;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
@@ -93,7 +93,7 @@ impl WalletContract {
 
         let mut binding = get_binding_internal(&env, &agent);
         binding.enabled = enabled;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);

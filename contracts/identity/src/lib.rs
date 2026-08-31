@@ -2,7 +2,7 @@
 
 //! Agent identity registry for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_non_empty, ProtocolError};
+use lily_common::{bump_instance, checked_inc, require, require_non_empty, ProtocolError};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String,
@@ -81,7 +81,7 @@ impl IdentityContract {
         if let Some(next_controller) = new_controller {
             profile.controller = next_controller;
         }
-        profile.revision += 1;
+        profile.revision = checked_inc(&env, profile.revision);
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
@@ -96,7 +96,7 @@ impl IdentityContract {
 
         let mut profile = get_profile_internal(&env, &agent);
         profile.active = false;
-        profile.revision += 1;
+        profile.revision = checked_inc(&env, profile.revision);
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);

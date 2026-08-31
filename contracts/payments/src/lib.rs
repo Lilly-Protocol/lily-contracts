@@ -3,7 +3,8 @@
 //! Payment intent and settlement primitives for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    bump_instance, checked_inc, require, require_non_empty, require_valid_bps, PaymentStatus,
+    ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -93,6 +94,7 @@ impl PaymentsContract {
         ensure_initialized(&env);
         require(&env, amount > 0, ProtocolError::InvalidInput);
         require_non_empty(&env, memo.len());
+        require(&env, payer_agent != payee_agent, ProtocolError::InvalidInput);
 
         payer_agent.require_auth();
 
@@ -109,7 +111,7 @@ impl PaymentsContract {
         };
 
         env.storage().persistent().set(&DataKey::Intent(id), &intent);
-        env.storage().instance().set(&DataKey::NextIntentId, &(id + 1));
+        env.storage().instance().set(&DataKey::NextIntentId, &checked_inc(&env, id));
         bump_instance(&env);
         env.events().publish((symbol_short!("create"), id), intent);
         id
