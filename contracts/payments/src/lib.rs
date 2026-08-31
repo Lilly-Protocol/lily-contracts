@@ -3,7 +3,8 @@
 //! Payment intent and settlement primitives for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    bump_instance, compute_fee, compute_net, require, require_non_empty, require_valid_bps,
+    PaymentStatus, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -78,6 +79,20 @@ impl PaymentsContract {
             fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
             next_intent_id: env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized(),
         }
+    }
+
+    /// Quote the fee and net amount for a given gross amount.
+    ///
+    /// Returns `(fee, net)` without modifying any state.
+    pub fn quote_fee(env: Env, amount: i128) -> (i128, i128) {
+        ensure_initialized(&env);
+        require(&env, amount > 0, ProtocolError::InvalidInput);
+        bump_instance(&env);
+
+        let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized();
+        let fee = compute_fee(amount, fee_bps);
+        let net = compute_net(amount, fee_bps);
+        (fee, net)
     }
 
     /// Create a payment intent that can be settled asynchronously.

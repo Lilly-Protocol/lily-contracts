@@ -55,7 +55,72 @@ pub fn require_valid_bps(env: &Env, fee_bps: u32) {
     require(env, fee_bps <= MAX_BPS, ProtocolError::FeeBpsTooHigh);
 }
 
+/// Compute the fee portion of `amount` given `fee_bps` basis points.
+///
+/// Uses integer division truncated toward zero. Panics on overflow or if
+/// `fee_bps` exceeds [`MAX_BPS`].
+pub fn compute_fee(amount: i128, fee_bps: u32) -> i128 {
+    assert!(fee_bps <= MAX_BPS, "fee_bps exceeds MAX_BPS");
+    amount
+        .checked_mul(fee_bps as i128)
+        .and_then(|v| v.checked_div(MAX_BPS as i128))
+        .unwrap_or_else(|| panic!("fee computation overflow"))
+}
+
+/// Compute the net amount after deducting the fee.
+///
+/// Panics on overflow or if `fee_bps` exceeds [`MAX_BPS`].
+pub fn compute_net(amount: i128, fee_bps: u32) -> i128 {
+    let fee = compute_fee(amount, fee_bps);
+    amount
+        .checked_sub(fee)
+        .unwrap_or_else(|| panic!("net computation overflow"))
+}
+
 /// Keep instance storage alive for long-lived protocol state.
 pub fn bump_instance(env: &Env) {
     env.storage().instance().extend_ttl(INSTANCE_BUMP_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compute_fee, compute_net, MAX_BPS};
+
+    #[test]
+    fn computes_zero_fee() {
+        assert_eq!(compute_fee(1_000_000, 0), 0);
+        assert_eq!(compute_net(1_000_000, 0), 1_000_000);
+    }
+
+    #[test]
+    fn computes_full_fee() {
+        assert_eq!(compute_fee(1_000_000, MAX_BPS), 1_000_000);
+        assert_eq!(compute_net(1_000_000, MAX_BPS), 0);
+    }
+
+    #[test]
+    fn computes_fifty_bps() {
+        assert_eq!(compute_fee(10_000, 50), 50);
+        assert_eq!(compute_net(10_000, 50), 9_950);
+    }
+
+    #[test]
+    fn truncates_fractional_fee() {
+        // 100 * 33 / 10_000 = 0.33 -> 0
+        assert_eq!(compute_fee(100, 33), 0);
+        // 10_000 * 33 / 10_000 = 33
+        assert_eq!(compute_fee(10_000, 33), 33);
+    }
+
+    #[test]
+    fn handles_negative_amounts() {
+        assert_eq!(compute_fee(-10_000, 100), -100);
+        assert_eq!(compute_net(-10_000, 100), -9_900);
+    }
+
+    #[test]
+    #[should_panic]
+    fn rejects_fee_bps_above_max() {
+        compute_fee(100, MAX_BPS + 1);
+    }
 }
