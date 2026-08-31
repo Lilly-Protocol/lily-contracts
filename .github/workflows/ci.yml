@@ -40,3 +40,6 @@ jobs:
 
       - name: Build Wasm artifacts
         run: make build-wasm
+
+      - name: Generate artifact manifest
+        run: make artifacts

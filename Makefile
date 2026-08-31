@@ -15,7 +15,7 @@ help:
 	"make test       - run all unit and integration-style tests" \
 	"make build      - build the workspace" \
 	"make build-wasm - compile all contract packages to Wasm" \
-	"make artifacts  - copy optimized Wasm artifacts into dist/" \
+	"make artifacts  - copy optimized Wasm artifacts into dist/ and generate manifest" \
 	"make ci         - local CI bundle (fmt-check, lint, test)" \
 	"make clean      - remove build outputs"
 
@@ -51,6 +51,7 @@ artifacts: build-wasm
 	@for pkg in $(CONTRACT_PACKAGES); do \
 		cp target/$(WASM_TARGET)/release/$$pkg.wasm $(ARTIFACTS_DIR)/$$pkg.wasm; \
 	done
+	./scripts/generate-manifest.sh $(ARTIFACTS_DIR)/manifest.json
 
 ci: fmt-check lint test
 
