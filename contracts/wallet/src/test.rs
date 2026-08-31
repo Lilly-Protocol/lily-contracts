@@ -69,3 +69,32 @@ fn rejects_zero_spend_limit() {
     client.initialize(&admin);
     client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &0_i128);
 }
+#[test]
+fn preserves_revision_on_rebind_after_disable() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let wallet = test_address(&env);
+    let new_wallet = test_address(&env);
+
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+    client.update_spend_limit(&agent, &2_000_i128);
+    client.set_enabled(&agent, &false);
+
+    // Re-binding after disabling must preserve revision continuity.
+    client.bind_wallet(&agent, &new_wallet, &symbol_short!("XLM"), &5_000_i128);
+
+    let rebound = client.get_binding(&agent);
+    assert!(rebound.enabled);
+    assert_eq!(rebound.wallet, new_wallet);
+    assert_eq!(rebound.settlement_asset, symbol_short!("XLM"));
+    assert_eq!(rebound.spend_limit, 5_000);
+    // Original bind = 0, update = 1, disable = 2, rebind = 3.
+    assert_eq!(rebound.revision, 3);
+}
+
+#[test]

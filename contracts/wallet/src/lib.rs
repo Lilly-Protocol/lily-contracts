@@ -43,6 +43,11 @@ impl WalletContract {
     }
 
     /// Bind an agent to a settlement wallet and policy envelope.
+    ///
+    /// Re-binding is only allowed when the previous binding has been disabled.
+    /// The new binding preserves the revision counter so that downstream
+    /// observers can detect the state transition; the revision is incremented
+    /// rather than reset to zero.
     pub fn bind_wallet(
         env: Env,
         agent: Address,
@@ -57,12 +62,21 @@ impl WalletContract {
         wallet.require_auth();
 
         let key = DataKey::Binding(agent.clone());
-        if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
-            require(&env, !existing.enabled, ProtocolError::WalletAlreadyBound);
-        }
+        let next_revision =
+            if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
+                require(&env, !existing.enabled, ProtocolError::WalletAlreadyBound);
+                existing.revision + 1
+            } else {
+                0
+            };
 
-        let binding =
-            WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
+        let binding = WalletBinding {
+            wallet,
+            settlement_asset,
+            spend_limit,
+            enabled: true,
+            revision: next_revision,
+        };
 
         env.storage().persistent().set(&key, &binding);
         bump_instance(&env);
