@@ -64,3 +64,27 @@ fn updates_fee_and_treasury() {
     assert_eq!(config.fee_bps, 375);
     assert_eq!(config.treasury, new_treasury);
 }
+
+
+#[test]
+fn single_key_views_return_config_values() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &250_u32);
+
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_treasury(), treasury);
+    assert_eq!(client.get_fee_bps(), 250);
+
+    let new_treasury = test_address(&env);
+    client.set_fee_bps(&375_u32);
+    client.set_treasury(&new_treasury);
+
+    assert_eq!(client.get_fee_bps(), 375);
+    assert_eq!(client.get_treasury(), new_treasury);
+}

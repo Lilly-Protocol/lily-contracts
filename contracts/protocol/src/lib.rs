@@ -63,18 +63,40 @@ impl ProtocolContract {
         bump_instance(&env);
 
         ProtocolConfig {
-            admin: get_admin(&env),
+            admin: get_admin_internal(&env),
             treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
             fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
         }
     }
+
+    /// Return the current protocol admin address.
+    pub fn get_admin(env: Env) -> Address {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        get_admin_internal(&env)
+    }
+
+    /// Return the current treasury address.
+    pub fn get_treasury(env: Env) -> Address {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::Treasury).unwrap_optimized()
+    }
+
+    /// Return the current fee in basis points.
+    pub fn get_fee_bps(env: Env) -> u32 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized()
+    }
+
 
     /// Update the protocol fee in basis points.
     pub fn set_fee_bps(env: Env, fee_bps: u32) {
         ensure_initialized(&env);
         require_valid_bps(&env, fee_bps);
 
-        let admin = get_admin(&env);
+        let admin = get_admin_internal(&env);
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
@@ -86,7 +108,7 @@ impl ProtocolContract {
     pub fn set_treasury(env: Env, treasury: Address) {
         ensure_initialized(&env);
 
-        let admin = get_admin(&env);
+        let admin = get_admin_internal(&env);
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -98,7 +120,7 @@ impl ProtocolContract {
     pub fn transfer_admin(env: Env, new_admin: Address) {
         ensure_initialized(&env);
 
-        let admin = get_admin(&env);
+        let admin = get_admin_internal(&env);
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &new_admin);
@@ -115,7 +137,7 @@ fn ensure_initialized(env: &Env) {
     );
 }
 
-fn get_admin(env: &Env) -> Address {
+fn get_admin_internal(env: &Env) -> Address {
     env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
 }
 
