@@ -81,3 +81,53 @@ fn rejects_settle_after_cancellation() {
     client.cancel_intent(&id);
     client.settle_intent(&id, &soroban_string(&env, "tx-0002"));
 }
+
+#[test]
+#[should_panic]
+fn create_intent_rejects_empty_memo() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    // Issue #34 ($80 Bounty): create_intent must reject empty memo strings
+    client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, ""));
+}
+
+#[test]
+#[should_panic]
+fn cancel_intent_fails_for_non_payer() {
+    use soroban_sdk::IntoVal;
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+    let non_payer = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    let id = client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, "cancel me"));
+
+    // Issue #31 ($30 Bounty): authenticate as non_payer and attempt to cancel payer's intent
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &non_payer,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "cancel_intent",
+            args: soroban_sdk::vec![&env, id.into_val(&env)],
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.cancel_intent(&id);
+}
+
+
