@@ -106,6 +106,17 @@ impl WalletContract {
         bump_instance(&env);
         get_binding_internal(&env, &agent)
     }
+
+    /// Returns true if the agent has an enabled wallet binding.
+    pub fn has_active_binding(env: Env, agent: Address) -> bool {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        if let Some(binding) = env.storage().persistent().get::<_, WalletBinding>(&DataKey::Binding(agent)) {
+            binding.enabled
+        } else {
+            false
+        }
+    }
 }
 
 fn ensure_initialized(env: &Env) {

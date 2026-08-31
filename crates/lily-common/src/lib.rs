@@ -27,6 +27,7 @@ pub enum ProtocolError {
     MissingRecord = 7,
     PaymentAlreadyFinalized = 8,
     WalletAlreadyBound = 9,
+    WalletNotBound = 10,
 }
 
 /// Shared payment status used by settlement-oriented contracts.
