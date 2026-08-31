@@ -125,7 +125,7 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Typed storage keys and typed return structs
 - Explicit initialization guards
 - Auth-gated admin and actor actions
-- Event emission on state transitions
+- Event emission on state transitions (see [docs/EVENTS.md](./docs/EVENTS.md))
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
 
