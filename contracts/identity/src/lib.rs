@@ -2,7 +2,7 @@
 
 //! Agent identity registry for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_non_empty, ProtocolError};
+use lily_common::{bump_instance, require, require_non_empty, ProtocolError, PROTOCOL_VERSION};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String,
@@ -30,6 +30,11 @@ enum DataKey {
 
 #[contractimpl]
 impl IdentityContract {
+    /// Return the shared protocol interface version.
+    pub fn version() -> u32 {
+        PROTOCOL_VERSION
+    }
+
     /// Initialize the registry admin.
     pub fn initialize(env: Env, admin: Address) {
         require(

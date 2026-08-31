@@ -1,7 +1,17 @@
 #![cfg(test)]
 
 use super::{ProtocolConfig, ProtocolContract, ProtocolContractClient};
+use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
+
+#[test]
+fn returns_protocol_version() {
+    let env = test_env();
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.version(), PROTOCOL_VERSION);
+}
 
 #[test]
 fn initializes_once_and_reads_config() {

@@ -4,6 +4,7 @@
 
 use lily_common::{
     bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    PROTOCOL_VERSION,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -47,6 +48,11 @@ enum DataKey {
 
 #[contractimpl]
 impl PaymentsContract {
+    /// Return the shared protocol interface version.
+    pub fn version() -> u32 {
+        PROTOCOL_VERSION
+    }
+
     /// Initialize settlement configuration once.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
         require(

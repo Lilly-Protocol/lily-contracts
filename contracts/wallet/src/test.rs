@@ -3,7 +3,17 @@
 use soroban_sdk::symbol_short;
 
 use super::{WalletBinding, WalletContract, WalletContractClient};
+use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
+
+#[test]
+fn returns_protocol_version() {
+    let env = test_env();
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.version(), PROTOCOL_VERSION);
+}
 
 #[test]
 fn binds_wallet_and_updates_policy() {

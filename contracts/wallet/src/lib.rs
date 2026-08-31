@@ -2,7 +2,7 @@
 
 //! Agent wallet binding and policy contract.
 
-use lily_common::{bump_instance, require, ProtocolError};
+use lily_common::{bump_instance, require, ProtocolError, PROTOCOL_VERSION};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
 
 #[contract]
@@ -28,6 +28,11 @@ enum DataKey {
 
 #[contractimpl]
 impl WalletContract {
+    /// Return the shared protocol interface version.
+    pub fn version() -> u32 {
+        PROTOCOL_VERSION
+    }
+
     /// Initialize the wallet policy registry.
     pub fn initialize(env: Env, admin: Address) {
         require(

@@ -2,7 +2,7 @@
 
 //! Global protocol configuration contract for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_valid_bps, ProtocolError};
+use lily_common::{bump_instance, require, require_valid_bps, ProtocolError, PROTOCOL_VERSION};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
 };
@@ -29,6 +29,11 @@ enum DataKey {
 
 #[contractimpl]
 impl ProtocolContract {
+    /// Return the shared protocol interface version.
+    pub fn version() -> u32 {
+        PROTOCOL_VERSION
+    }
+
     /// Initialize protocol-wide configuration once.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
         require(

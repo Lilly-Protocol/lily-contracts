@@ -1,9 +1,18 @@
 #![cfg(test)]
 
-use lily_common::PaymentStatus;
+use lily_common::{PaymentStatus, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
 
 use super::{PaymentIntent, PaymentsContract, PaymentsContractClient};
+
+#[test]
+fn returns_protocol_version() {
+    let env = test_env();
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.version(), PROTOCOL_VERSION);
+}
 
 #[test]
 fn creates_and_settles_payment_intents() {
