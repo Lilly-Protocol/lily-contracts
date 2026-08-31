@@ -104,6 +104,16 @@ You can inspect the local toolchain status with:
 ./scripts/check-tooling.sh
 ```
 
+You can check whether a Soroban RPC endpoint is healthy before deploying or invoking contracts:
+
+```bash
+# Uses the testnet RPC by default
+./scripts/rpc-health.sh
+
+# Or point it at a custom endpoint
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org ./scripts/rpc-health.sh
+```
+
 ## Common development commands
 
 ```bash
