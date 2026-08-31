@@ -13,6 +13,10 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 
 1. Install Rust and verify `cargo --version`.
 2. Install `stellar-cli` using the official Stellar instructions.
+   Use a release from the same major line as the workspace
+   `soroban-sdk` (currently the `v22` line; CI pins
+   `stellar/stellar-cli@v22.8.2`). `scripts/check-tooling.sh`
+   fails CI when the CLI and SDK major versions drift apart.
 3. Install the Wasm target with `rustup target add wasm32v1-none`.
 4. Run `make fmt`, `make lint`, and `make test` before opening a PR.
 

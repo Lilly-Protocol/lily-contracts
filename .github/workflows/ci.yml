@@ -21,7 +21,12 @@ jobs:
           targets: wasm32v1-none
 
       - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v23.0.1
+        # Pinned to the v22 line to match soroban-sdk 22 (Cargo.lock);
+        # v22.8.2 is the latest patch release of that line. A CLI/SDK
+        # major-version mismatch can produce incompatible contract spec
+        # output or deploy-tooling surprises, so scripts/check-tooling.sh
+        # fails CI loudly when the two drift apart (bounties #126 / #127).
+        uses: stellar/stellar-cli@v22.8.2
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
