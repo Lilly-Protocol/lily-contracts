@@ -73,3 +73,34 @@ fn admin_can_deactivate_profiles() {
     assert!(!profile.active);
     assert_eq!(profile.revision, 1);
 }
+
+#[test]
+fn is_active_and_is_registered_views_handle_missing_and_active_profiles() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+    let other = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    // Unknown agent: neither active nor registered.
+    assert!(!client.is_active(&other));
+    assert!(!client.is_registered(&other));
+
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+
+    // Registered and active.
+    assert!(client.is_active(&agent));
+    assert!(client.is_registered(&agent));
+
+    client.deactivate(&agent);
+
+    // Registered but no longer active.
+    assert!(!client.is_active(&agent));
+    assert!(client.is_registered(&agent));
+}
+

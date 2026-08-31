@@ -109,6 +109,24 @@ impl IdentityContract {
         bump_instance(&env);
         get_profile_internal(&env, &agent)
     }
+
+    /// Returns true if a profile exists for the agent and is currently active.
+    pub fn is_active(env: Env, agent: Address) -> bool {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage()
+            .persistent()
+            .get(&DataKey::Profile(agent))
+            .map(|p: AgentProfile| p.active)
+            .unwrap_or(false)
+    }
+
+    /// Returns true if any profile (active or deactivated) exists for the agent.
+    pub fn is_registered(env: Env, agent: Address) -> bool {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().has(&DataKey::Profile(agent))
+    }
 }
 
 fn ensure_initialized(env: &Env) {
