@@ -104,6 +104,7 @@ impl IdentityContract {
     }
 
     /// Fetch a registered profile.
+    #[must_use]
     pub fn get_profile(env: Env, agent: Address) -> AgentProfile {
         ensure_initialized(&env);
         bump_instance(&env);

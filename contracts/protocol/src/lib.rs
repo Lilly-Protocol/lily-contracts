@@ -53,11 +53,13 @@ impl ProtocolContract {
     }
 
     /// Return whether the contract has been initialized.
+    #[must_use]
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
     }
 
     /// Fetch the current protocol configuration.
+    #[must_use]
     pub fn get_config(env: Env) -> ProtocolConfig {
         ensure_initialized(&env);
         bump_instance(&env);

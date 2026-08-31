@@ -101,6 +101,7 @@ impl WalletContract {
     }
 
     /// Read the current binding for an agent.
+    #[must_use]
     pub fn get_binding(env: Env, agent: Address) -> WalletBinding {
         ensure_initialized(&env);
         bump_instance(&env);

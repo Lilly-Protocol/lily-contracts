@@ -4,7 +4,7 @@ CONTRACT_PACKAGES := protocol identity wallet payments
 WASM_TARGET := wasm32v1-none
 ARTIFACTS_DIR := dist
 
-.PHONY: fmt fmt-check lint check test build build-wasm artifacts ci clean help
+.PHONY: fmt fmt-check lint check test build build-wasm wasm-size artifacts ci clean help
 
 help:
 	@printf "%s\n" \
@@ -14,7 +14,8 @@ help:
 	"make check      - cargo check across the workspace" \
 	"make test       - run all unit and integration-style tests" \
 	"make build      - build the workspace" \
-	"make build-wasm - compile all contract packages to Wasm" \
+	"make build-wasm - compile all contract packages to Wasm (with size regression gate)" \
+	"make wasm-size  - compile and check wasm sizes against the committed baseline" \
 	"make artifacts  - copy optimized Wasm artifacts into dist/" \
 	"make ci         - local CI bundle (fmt-check, lint, test)" \
 	"make clean      - remove build outputs"
@@ -26,7 +27,7 @@ fmt-check:
 	cargo fmt --all --check
 
 lint:
-	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 check:
 	cargo check --workspace
@@ -45,6 +46,10 @@ build-wasm:
 	@for pkg in $(CONTRACT_PACKAGES); do \
 		cargo build --target $(WASM_TARGET) --profile release --package $$pkg; \
 	done
+	@sh scripts/check-wasm-size.sh
+
+wasm-size: build-wasm
+	@echo "wasm size regression gate: PASS"
 
 artifacts: build-wasm
 	@mkdir -p $(ARTIFACTS_DIR)

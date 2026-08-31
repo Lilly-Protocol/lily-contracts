@@ -69,6 +69,7 @@ impl PaymentsContract {
     }
 
     /// Return the active payments configuration.
+    #[must_use]
     pub fn get_config(env: Env) -> PaymentsConfig {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -81,6 +82,7 @@ impl PaymentsContract {
     }
 
     /// Create a payment intent that can be settled asynchronously.
+    #[must_use]
     pub fn create_intent(
         env: Env,
         payer_agent: Address,
@@ -154,6 +156,7 @@ impl PaymentsContract {
     }
 
     /// Read an individual payment intent.
+    #[must_use]
     pub fn get_intent(env: Env, intent_id: u64) -> PaymentIntent {
         ensure_initialized(&env);
         bump_instance(&env);
