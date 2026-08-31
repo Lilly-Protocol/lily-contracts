@@ -24,6 +24,7 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 - Contract state keys should stay typed and local to each contract crate.
 - Initialization must be one-time and explicitly tested.
 - Admin actions must always require direct auth.
+- Public protocol enums may gain variants over time; external consumers should include a wildcard arm when matching `ProtocolError` or `PaymentStatus`.
 
 ## Testing expectations
 
