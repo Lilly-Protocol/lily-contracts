@@ -64,3 +64,18 @@ fn updates_fee_and_treasury() {
     assert_eq!(config.fee_bps, 375);
     assert_eq!(config.treasury, new_treasury);
 }
+
+#[test]
+#[should_panic]
+fn rejects_unauthenticated_initialization() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    env.mock_auths(&[]);
+    client.initialize(&admin, &treasury, &100_u32);
+}
+

@@ -32,12 +32,13 @@ enum DataKey {
 impl IdentityContract {
     /// Initialize the registry admin.
     pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);

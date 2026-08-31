@@ -81,3 +81,34 @@ fn rejects_settle_after_cancellation() {
     client.cancel_intent(&id);
     client.settle_intent(&id, &soroban_string(&env, "tx-0002"));
 }
+
+#[test]
+#[should_panic]
+fn get_intent_unknown_id_fails() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    // Issue #30 ($25 Bounty): query unknown intent id
+    client.get_intent(&99_999_u64);
+}
+
+#[test]
+#[should_panic]
+fn rejects_unauthenticated_initialization() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    // Issue #16 ($85 Bounty): unauthenticated initialize fails at auth boundary
+    env.mock_auths(&[]);
+    client.initialize(&admin, &treasury, &50_u32);
+}
+
