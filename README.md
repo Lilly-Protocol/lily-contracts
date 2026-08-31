@@ -104,6 +104,14 @@ You can inspect the local toolchain status with:
 ./scripts/check-tooling.sh
 ```
 
+
+You can deploy the contracts to a target network and capture their IDs:
+
+```bash
+make build-wasm
+./scripts/deploy.sh testnet alice ./config/deployed-contracts.json
+```
+
 ## Common development commands
 
 ```bash
