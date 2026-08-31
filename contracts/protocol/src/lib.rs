@@ -22,6 +22,7 @@ pub struct ProtocolConfig {
 #[derive(Clone)]
 enum DataKey {
     Admin,
+    PendingAdmin,
     Treasury,
     FeeBps,
     Initialized,
@@ -69,6 +70,11 @@ impl ProtocolContract {
         }
     }
 
+    /// Return the pending admin address if a transfer is in progress.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
     /// Update the protocol fee in basis points.
     pub fn set_fee_bps(env: Env, fee_bps: u32) {
         ensure_initialized(&env);
@@ -94,18 +100,43 @@ impl ProtocolContract {
         env.events().publish((symbol_short!("treasury"), admin), treasury);
     }
 
-    /// Transfer protocol admin authority.
+    /// Propose a new protocol admin (step 1 of two-step transfer).
     pub fn transfer_admin(env: Env, new_admin: Address) {
         ensure_initialized(&env);
 
         let admin = get_admin(&env);
         admin.require_auth();
 
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
         bump_instance(&env);
-        env.events().publish((symbol_short!("admin"), admin), new_admin);
+        env.events().publish((symbol_short!("propose"), admin), new_admin);
+    }
+
+    /// Accept protocol admin authority as the proposed pending admin (step 2 of two-step transfer).
+    pub fn accept_admin(env: Env) {
+        ensure_initialized(&env);
+
+        require(
+            &env,
+            env.storage().instance().has(&DataKey::PendingAdmin),
+            ProtocolError::MissingRecord,
+        );
+
+        let pending_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_optimized();
+        pending_admin.require_auth();
+
+        let old_admin = get_admin(&env);
+        env.storage().instance().set(&DataKey::Admin, &pending_admin);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("admin"), old_admin), pending_admin);
     }
 }
+
 
 fn ensure_initialized(env: &Env) {
     require(
