@@ -69,3 +69,16 @@ fn rejects_zero_spend_limit() {
     client.initialize(&admin);
     client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &0_i128);
 }
+
+#[test]
+fn is_initialized_returns_false_before_init_and_true_after() {
+    let env = test_env();
+    let admin = test_address(&env);
+
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&admin);
+    assert!(client.is_initialized());
+}

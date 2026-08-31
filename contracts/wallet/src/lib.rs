@@ -42,6 +42,11 @@ impl WalletContract {
         env.events().publish((symbol_short!("init"),), admin);
     }
 
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
+    }
+
     /// Bind an agent to a settlement wallet and policy envelope.
     pub fn bind_wallet(
         env: Env,

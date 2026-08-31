@@ -73,3 +73,16 @@ fn admin_can_deactivate_profiles() {
     assert!(!profile.active);
     assert_eq!(profile.revision, 1);
 }
+
+#[test]
+fn is_initialized_returns_false_before_init_and_true_after() {
+    let env = test_env();
+    let admin = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&admin);
+    assert!(client.is_initialized());
+}

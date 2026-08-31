@@ -44,6 +44,11 @@ impl IdentityContract {
         env.events().publish((symbol_short!("init"),), admin);
     }
 
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
+    }
+
     /// Register a new agent profile controlled by a specific address.
     pub fn register(env: Env, agent: Address, controller: Address, metadata_uri: String) {
         ensure_initialized(&env);

@@ -81,3 +81,17 @@ fn rejects_settle_after_cancellation() {
     client.cancel_intent(&id);
     client.settle_intent(&id, &soroban_string(&env, "tx-0002"));
 }
+
+#[test]
+fn is_initialized_returns_false_before_init_and_true_after() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&admin, &treasury, &50_u32);
+    assert!(client.is_initialized());
+}
