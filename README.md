@@ -128,6 +128,7 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Event emission on state transitions
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
+- Documented upgrade and migration strategy (see [docs/UPGRADABILITY.md](./docs/UPGRADABILITY.md))
 
 ## Future protocol areas intentionally left for follow-up
 
