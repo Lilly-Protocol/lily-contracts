@@ -20,8 +20,9 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32v1-none
 
+      # Pin stellar-cli to v22.8.2 to match soroban-sdk v22 (Protocol 22)
       - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v23.0.1
+        uses: stellar/stellar-cli@v22.8.2
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
