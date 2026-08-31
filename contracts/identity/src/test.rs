@@ -73,3 +73,26 @@ fn admin_can_deactivate_profiles() {
     assert!(!profile.active);
     assert_eq!(profile.revision, 1);
 }
+
+
+#[test]
+fn get_profile_opt_returns_some_for_registered_and_none_for_unknown() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let unknown = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    assert!(client.get_profile_opt(&unknown).is_none());
+
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+    let maybe = client.get_profile_opt(&agent);
+    assert!(maybe.is_some());
+    assert_eq!(maybe.unwrap().active, true);
+
+    assert!(client.get_profile_opt(&unknown).is_none());
+}

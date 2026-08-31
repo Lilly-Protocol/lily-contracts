@@ -69,3 +69,26 @@ fn rejects_zero_spend_limit() {
     client.initialize(&admin);
     client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &0_i128);
 }
+
+
+#[test]
+fn get_binding_opt_returns_some_for_bound_and_none_for_unbound() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let unknown = test_address(&env);
+    let wallet = test_address(&env);
+
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    assert!(client.get_binding_opt(&unknown).is_none());
+
+    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+    let maybe = client.get_binding_opt(&agent);
+    assert!(maybe.is_some());
+    assert_eq!(maybe.unwrap().spend_limit, 1_000);
+
+    assert!(client.get_binding_opt(&unknown).is_none());
+}

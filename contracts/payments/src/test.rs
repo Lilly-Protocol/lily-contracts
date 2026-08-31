@@ -81,3 +81,26 @@ fn rejects_settle_after_cancellation() {
     client.cancel_intent(&id);
     client.settle_intent(&id, &soroban_string(&env, "tx-0002"));
 }
+
+
+#[test]
+fn get_intent_opt_returns_some_for_created_and_none_for_unknown() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    assert!(client.get_intent_opt(&1).is_none());
+
+    let id = client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, "option test"));
+    let maybe = client.get_intent_opt(&id);
+    assert!(maybe.is_some());
+    assert_eq!(maybe.unwrap().amount, 5_000);
+
+    assert!(client.get_intent_opt(&999).is_none());
+}
