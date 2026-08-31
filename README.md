@@ -104,6 +104,14 @@ You can inspect the local toolchain status with:
 ./scripts/check-tooling.sh
 ```
 
+You can initialize deployed contracts from a single config file:
+
+```bash
+cp config/deploy.example.json config/deploy.json
+# Edit config/deploy.json with real addresses and contract IDs
+./scripts/init-contracts.sh config/deploy.json
+```
+
 ## Common development commands
 
 ```bash
