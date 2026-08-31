@@ -153,6 +153,45 @@ impl PaymentsContract {
         env.events().publish((symbol_short!("cancel"), intent_id), intent);
     }
 
+
+
+    /// Update the fee charged on payment intents, in basis points.
+    pub fn set_fee_bps(env: Env, fee_bps: u32) {
+        ensure_initialized(&env);
+        require_valid_bps(&env, fee_bps);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("fee"), admin), fee_bps);
+    }
+
+    /// Update the treasury address used to collect fees.
+    pub fn set_treasury(env: Env, treasury: Address) {
+        ensure_initialized(&env);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Treasury, &treasury);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("treasury"), admin), treasury);
+    }
+
+    /// Transfer payments admin authority.
+    pub fn transfer_admin(env: Env, new_admin: Address) {
+        ensure_initialized(&env);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("admin"), admin), new_admin);
+    }
+
     /// Read an individual payment intent.
     pub fn get_intent(env: Env, intent_id: u64) -> PaymentIntent {
         ensure_initialized(&env);

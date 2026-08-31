@@ -81,3 +81,47 @@ fn rejects_settle_after_cancellation() {
     client.cancel_intent(&id);
     client.settle_intent(&id, &soroban_string(&env, "tx-0002"));
 }
+
+
+#[test]
+fn admin_can_update_fee_treasury_and_transfer_authority() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let new_treasury = test_address(&env);
+    let new_admin = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+
+    client.set_fee_bps(&100_u32);
+    client.set_treasury(&new_treasury);
+    client.transfer_admin(&new_admin);
+
+    let config = client.get_config();
+    assert_eq!(config.fee_bps, 100);
+    assert_eq!(config.treasury, new_treasury);
+    assert_eq!(config.admin, new_admin);
+
+    // New admin can still operate the contract.
+    let id = client.create_intent(&payer, &payee, &1_000_i128, &soroban_string(&env, "after transfer"));
+    assert_eq!(id, 1);
+}
+
+#[test]
+#[should_panic]
+fn rejects_invalid_fee_bps_update() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.set_fee_bps(&10_001_u32);
+}
