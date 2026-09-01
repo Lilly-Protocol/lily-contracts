@@ -40,3 +40,6 @@ jobs:
 
       - name: Build Wasm artifacts
         run: make build-wasm
+
+      - name: Check Wasm size limits
+        run: make check-wasm-sizes
