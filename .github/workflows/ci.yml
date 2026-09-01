@@ -38,5 +38,5 @@ jobs:
       - name: Test
         run: make test
 
-      - name: Build Wasm artifacts
-        run: make build-wasm
+      - name: Build and package Wasm artifacts
+        run: make artifacts

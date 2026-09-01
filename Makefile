@@ -51,6 +51,7 @@ artifacts: build-wasm
 	@for pkg in $(CONTRACT_PACKAGES); do \
 		cp target/$(WASM_TARGET)/release/$$pkg.wasm $(ARTIFACTS_DIR)/$$pkg.wasm; \
 	done
+	@./scripts/generate-manifest.sh
 
 ci: fmt-check lint test
 
