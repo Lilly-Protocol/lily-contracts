@@ -49,6 +49,14 @@ Please include:
 
 Do not open public issues for exploitable vulnerabilities. Until a dedicated security channel is published, contact the Lily Protocol maintainers privately and include reproduction steps, impact, and affected contracts.
 
+## Continuous Integration and Scheduled Builds
+
+The repository executes automated CI on all pull requests and pushes to `main`/`master`. In addition, a scheduled nightly workflow runs at `02:00 UTC` against the latest toolchain to detect upstream toolchain drifts or compiler regressions early.
+
+If a scheduled nightly run fails:
+- The maintainers review the failure logs to identify whether an upstream dependency or toolchain update introduced a breaking change.
+- A tracking issue is opened to pin or adapt to the toolchain revision before it affects developer pull requests.
+
 ## Good first contributions
 
 Areas intentionally left open for contributors include:
