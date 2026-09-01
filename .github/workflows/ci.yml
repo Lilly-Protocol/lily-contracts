@@ -38,5 +38,8 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Documentation check
+        run: make doc
+
       - name: Build Wasm artifacts
         run: make build-wasm
