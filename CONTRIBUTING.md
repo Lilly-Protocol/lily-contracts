@@ -16,6 +16,28 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 3. Install the Wasm target with `rustup target add wasm32v1-none`.
 4. Run `make fmt`, `make lint`, and `make test` before opening a PR.
 
+## CI and toolchain
+
+- **Locked builds**: `Cargo.lock` is committed. Every dependency-resolving
+  Make target (`lint`, `check`, `test`, `build`, `build-wasm`, `docs`) runs
+  cargo with `--locked`, so a stale or drifted lockfile **fails the build**
+  instead of silently updating. If you add/remove a dependency, run cargo
+  normally to refresh `Cargo.lock` and commit the updated file.
+  (`cargo fmt` is the only exception — it cannot take `--locked` and never
+  resolves dependencies.)
+- **Docs gate**: CI builds rustdoc with warnings denied
+  (`make docs`), so broken intra-doc links or rustdoc warnings fail the build.
+- **Strict tooling**: CI runs `./scripts/check-tooling.sh --strict`, which
+  exits non-zero when a required prerequisite (`rustc`, `cargo`, `rustfmt`,
+  `stellar`, `wasm32v1-none` stdlib) is missing. Run the same command locally
+  to check your environment before pushing.
+- **Nightly run**: CI also runs the standard check suite on a schedule
+  (`.github/workflows/ci.yml`, `schedule:`) against the latest stable
+  toolchain. A failed nightly run is an **annotation, not a blocker**: it
+  does not fail any PR, but signals an upstream regression (rustc/clippy/
+  soroban-sdk). If it is caused by an upstream change, fix the code or
+  pin/bump the toolchain deliberately in a PR, then re-run.
+
 ## Repository conventions
 
 - `contracts/` contains deployable Soroban contracts.
