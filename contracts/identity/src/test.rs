@@ -73,3 +73,44 @@ fn admin_can_deactivate_profiles() {
     assert!(!profile.active);
     assert_eq!(profile.revision, 1);
 }
+
+#[test]
+fn admin_can_reactivate_inactive_profiles() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+    client.deactivate(&agent);
+
+    let deactivated = client.get_profile(&agent);
+    assert!(!deactivated.active);
+    assert_eq!(deactivated.revision, 1);
+
+    client.reactivate(&agent);
+
+    let reactivated = client.get_profile(&agent);
+    assert!(reactivated.active);
+    assert_eq!(reactivated.revision, 2);
+}
+
+#[test]
+#[should_panic]
+fn rejects_reactivation_of_already_active_profile() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+    client.reactivate(&agent);
+}
