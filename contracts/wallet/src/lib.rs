@@ -100,6 +100,22 @@ impl WalletContract {
         env.events().publish((symbol_short!("state"), agent), binding);
     }
 
+    /// Release persistent binding storage for an agent.
+    pub fn unbind_wallet(env: Env, agent: Address) {
+        ensure_initialized(&env);
+        agent.require_auth();
+
+        let key = DataKey::Binding(agent.clone());
+        let binding: WalletBinding =
+            env.storage().persistent().get(&key).unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
+            });
+
+        env.storage().persistent().remove(&key);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("unbind"), agent), binding);
+    }
+
     /// Read the current binding for an agent.
     pub fn get_binding(env: Env, agent: Address) -> WalletBinding {
         ensure_initialized(&env);
