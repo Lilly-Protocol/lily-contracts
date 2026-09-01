@@ -58,3 +58,47 @@ Areas intentionally left open for contributors include:
 - Contract deployment tooling
 - Cross-contract integration tests
 - Governance and role separation enhancements
+
+## Auth and error mapping
+
+Soroban enforces cryptographic signatures in the host, not in contract code.
+Consequently an authorization failure can surface in **two different shapes**,
+and integrators should treat both as "not allowed":
+
+| Failure class | What the SDK raises | How this repo produces it |
+| --- | --- | --- |
+| Missing / invalid **signature** | Host `Auth` error (`unwrap_infallible` trap from `Address::require_auth`) | `lily_common::require_auth_or_error(&addr, &env)` — the single canonical signature-check entry point used by every contract |
+| Wrong **role** (caller is not the expected principal) | Typed `ProtocolError::Unauthorized` (`Error(Contract, #3)`) | `lily_common::require_caller(&env, &caller, &expected)` — call this *before* `require_auth_or_error` whenever the contract knows the expected principal |
+| Reentrant invocation into a guarded transition | Typed `ProtocolError::ReentrantCall` (`Error(Contract, #10)`) | `lily_common::NonReentrantGuard::acquire(&env, key)` — see `SECURITY.md` |
+
+Notes for off-chain consumers:
+
+- `ProtocolError` discriminants are stable wire identifiers; match on them, not on panic strings.
+- A host `Auth` error at the top of the call stack means the presented authorizer did not sign the call — map it to `Unauthorized` in application code.
+- Prefer typed role checks for every "who is allowed" question: they produce
+  structured `ContractError`s that survive the contract boundary, whereas the
+  `Auth` trap is indistinguishable across different authorization rules.
+- Example: `payments::settle_intent` first runs `require_caller` (typed
+  `Unauthorized` for a non-admin caller) and only then `require_auth_or_error`
+  (host `Auth` error for a non-signing admin).
+
+### Reentrancy guard usage
+
+State-transition functions (settle, cancel, any future escrow release) hold a
+`NonReentrantGuard` across their mutation window:
+
+```rust
+let _guard = NonReentrantGuard::acquire(&env, symbol_short!("settle"));
+// ...transition logic...
+```
+
+Rules:
+
+- Use one guard **key per transition** (`Symbol`, unique within the contract's
+  instance storage) so guarded windows never collide with business keys.
+- The guard is released on scope exit **including panic unwind**, so the flag
+  never leaks across calls.
+- The Soroban 22 host already rejects direct re-invocation of a contract that
+  is on the call stack; the guard is the shared, typed, cross-SDK
+  defense-in-depth layer for recursive acquisition and for SDK builds that
+  allow reentry.

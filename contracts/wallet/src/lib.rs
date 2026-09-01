@@ -2,7 +2,7 @@
 
 //! Agent wallet binding and policy contract.
 
-use lily_common::{bump_instance, require, ProtocolError};
+use lily_common::{bump_instance, require, require_auth_or_error, ProtocolError};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
 
 #[contract]
@@ -35,7 +35,7 @@ impl WalletContract {
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -53,8 +53,8 @@ impl WalletContract {
         ensure_initialized(&env);
         require(&env, spend_limit > 0, ProtocolError::InvalidInput);
 
-        agent.require_auth();
-        wallet.require_auth();
+        require_auth_or_error(&agent, &env);
+        require_auth_or_error(&wallet, &env);
 
         let key = DataKey::Binding(agent.clone());
         if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
@@ -74,7 +74,7 @@ impl WalletContract {
         ensure_initialized(&env);
         require(&env, spend_limit > 0, ProtocolError::InvalidInput);
 
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
         require(&env, binding.enabled, ProtocolError::InvalidInput);
@@ -89,7 +89,7 @@ impl WalletContract {
     /// Enable or disable a wallet binding.
     pub fn set_enabled(env: Env, agent: Address, enabled: bool) {
         ensure_initialized(&env);
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
         binding.enabled = enabled;

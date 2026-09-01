@@ -3,7 +3,8 @@
 //! Payment intent and settlement primitives for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    bump_instance, require, require_auth_or_error, require_caller, require_non_empty,
+    require_valid_bps, NonReentrantGuard, PaymentStatus, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -32,6 +33,9 @@ pub struct PaymentIntent {
     pub memo: String,
     pub settlement_reference: String,
     pub status: PaymentStatus,
+    /// Ledger timestamp (soroban time units, 30-second ledgers) captured at
+    /// intent creation. Used for audit ordering and dispute windows.
+    pub created_at: u64,
 }
 
 #[contracttype]
@@ -56,7 +60,7 @@ impl PaymentsContract {
         );
         require_valid_bps(&env, fee_bps);
 
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -104,6 +108,7 @@ impl PaymentsContract {
             memo,
             settlement_reference: String::from_str(&env, ""),
             status: PaymentStatus::Pending,
+            created_at: env.ledger().timestamp(),
         };
 
         env.storage().persistent().set(&DataKey::Intent(id), &intent);
@@ -114,12 +119,21 @@ impl PaymentsContract {
     }
 
     /// Mark a payment intent as settled.
-    pub fn settle_intent(env: Env, intent_id: u64, settlement_reference: String) {
+    ///
+    /// `caller` is the principal authorized to settle. The typed role check
+    /// raises `ProtocolError::Unauthorized` when `caller` is not the stored
+    /// admin; a missing/invalid signature then surfaces as the host `Auth`
+    /// error from `require_auth` (see `CONTRIBUTING.md` for the mapping).
+    pub fn settle_intent(env: Env, caller: Address, intent_id: u64, settlement_reference: String) {
         ensure_initialized(&env);
         require_non_empty(&env, settlement_reference.len());
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_caller(&env, &caller, &admin);
+        require_auth_or_error(&caller, &env);
+
+        // Guard the status transition against reentrant settlement.
+        let _guard = NonReentrantGuard::acquire(&env, symbol_short!("settle"));
 
         let mut intent = get_intent_internal(&env, intent_id);
         require(
@@ -141,6 +155,8 @@ impl PaymentsContract {
 
         let mut intent = get_intent_internal(&env, intent_id);
         intent.payer_agent.require_auth();
+        // Guard the status transition against reentrant cancellation.
+        let _guard = NonReentrantGuard::acquire(&env, symbol_short!("cancel"));
         require(
             &env,
             intent.status == PaymentStatus::Pending,

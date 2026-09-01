@@ -2,7 +2,9 @@
 
 //! Agent identity registry for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_non_empty, ProtocolError};
+use lily_common::{
+    bump_instance, require, require_auth_or_error, require_non_empty, ProtocolError,
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String,
@@ -37,7 +39,7 @@ impl IdentityContract {
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -54,7 +56,7 @@ impl IdentityContract {
             ProtocolError::AlreadyExists,
         );
 
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let profile = AgentProfile { controller, metadata_uri, active: true, revision: 0 };
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
@@ -75,7 +77,7 @@ impl IdentityContract {
 
         let mut profile = get_profile_internal(&env, &agent);
         require(&env, profile.active, ProtocolError::InvalidInput);
-        profile.controller.require_auth();
+        require_auth_or_error(&profile.controller, &env);
 
         profile.metadata_uri = metadata_uri;
         if let Some(next_controller) = new_controller {
@@ -92,7 +94,7 @@ impl IdentityContract {
     pub fn deactivate(env: Env, agent: Address) {
         ensure_initialized(&env);
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         let mut profile = get_profile_internal(&env, &agent);
         profile.active = false;
