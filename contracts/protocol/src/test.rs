@@ -9,7 +9,7 @@ fn initializes_once_and_reads_config() {
     let admin = test_address(&env);
     let treasury = test_address(&env);
 
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &250_u32);
@@ -26,7 +26,7 @@ fn rejects_reinitialization() {
     let admin = test_address(&env);
     let treasury = test_address(&env);
 
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &100_u32);
@@ -40,7 +40,7 @@ fn rejects_fee_bps_above_max() {
     let admin = test_address(&env);
     let treasury = test_address(&env);
 
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &10_001_u32);
@@ -53,7 +53,7 @@ fn updates_fee_and_treasury() {
     let treasury = test_address(&env);
     let new_treasury = test_address(&env);
 
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &100_u32);
@@ -63,4 +63,32 @@ fn updates_fee_and_treasury() {
     let config = client.get_config();
     assert_eq!(config.fee_bps, 375);
     assert_eq!(config.treasury, new_treasury);
+}
+
+#[test]
+fn initialize_records_admin_pinned_at_deploy_time() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &150_u32);
+    assert!(client.is_initialized());
+    assert_eq!(client.get_config().admin, admin);
+}
+
+#[test]
+#[should_panic]
+fn initialize_rejects_admin_other_than_deployer() {
+    let env = test_env();
+    let deployer_admin = test_address(&env);
+    let front_runner = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (deployer_admin,));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&front_runner, &treasury, &150_u32);
 }

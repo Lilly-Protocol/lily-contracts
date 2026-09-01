@@ -2,8 +2,11 @@
 
 //! Agent wallet binding and policy contract.
 
-use lily_common::{bump_instance, require, ProtocolError};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use lily_common::{bump_instance, require, require_enabled, ProtocolError};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
+    Symbol,
+};
 
 #[contract]
 pub struct WalletContract;
@@ -24,17 +27,30 @@ enum DataKey {
     Admin,
     Initialized,
     Binding(Address),
+    PinnedAdmin,
 }
 
 #[contractimpl]
 impl WalletContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize the wallet policy registry.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_initial_admin(&env, &admin);
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
@@ -77,7 +93,7 @@ impl WalletContract {
         agent.require_auth();
 
         let mut binding = get_binding_internal(&env, &agent);
-        require(&env, binding.enabled, ProtocolError::InvalidInput);
+        require_enabled(&env, binding.enabled);
         binding.spend_limit = spend_limit;
         binding.revision += 1;
 
@@ -114,6 +130,11 @@ fn ensure_initialized(env: &Env) {
         env.storage().instance().has(&DataKey::Initialized),
         ProtocolError::NotInitialized,
     );
+}
+
+fn require_initial_admin(env: &Env, admin: &Address) {
+    let pinned: Address = env.storage().instance().get(&DataKey::PinnedAdmin).unwrap_optimized();
+    require(env, *admin == pinned, ProtocolError::Unauthorized);
 }
 
 fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {

@@ -13,7 +13,7 @@ fn creates_and_settles_payment_intents() {
     let payer = test_address(&env);
     let payee = test_address(&env);
 
-    let contract_id = env.register(PaymentsContract, ());
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
     let client = PaymentsContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &50_u32);
@@ -53,7 +53,7 @@ fn payer_can_cancel_pending_intents() {
     let payer = test_address(&env);
     let payee = test_address(&env);
 
-    let contract_id = env.register(PaymentsContract, ());
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
     let client = PaymentsContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &50_u32);
@@ -73,11 +73,25 @@ fn rejects_settle_after_cancellation() {
     let payer = test_address(&env);
     let payee = test_address(&env);
 
-    let contract_id = env.register(PaymentsContract, ());
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
     let client = PaymentsContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &50_u32);
     let id = client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, "cancel me"));
     client.cancel_intent(&id);
     client.settle_intent(&id, &soroban_string(&env, "tx-0002"));
+}
+
+#[test]
+#[should_panic]
+fn initialize_rejects_admin_other_than_deployer() {
+    let env = test_env();
+    let deployer_admin = test_address(&env);
+    let front_runner = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (deployer_admin,));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&front_runner, &treasury, &50_u32);
 }

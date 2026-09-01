@@ -25,6 +25,23 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 - Initialization must be one-time and explicitly tested.
 - Admin actions must always require direct auth.
 
+## Initialization and deployer trust
+
+Every contract pins its intended initial admin in the `__constructor`, which
+the deployer supplies at deploy time:
+
+```rust
+let contract_id = env.register(ProtocolContract, (initial_admin,));
+```
+
+`initialize` only accepts an `admin` argument that matches this pinned
+address; any other caller fails with `ProtocolError::Unauthorized`. Because
+the pin is written before the contract address is publicly known, a
+front-runner cannot claim a fresh deployment by calling `initialize` first
+with their own address. The trust model is therefore: the identity of the
+initial admin is fixed at deploy time, and the first `initialize` call must
+use exactly that address.
+
 ## Testing expectations
 
 Every contract change should consider:

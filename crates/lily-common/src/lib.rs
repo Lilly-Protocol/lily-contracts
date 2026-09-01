@@ -55,7 +55,50 @@ pub fn require_valid_bps(env: &Env, fee_bps: u32) {
     require(env, fee_bps <= MAX_BPS, ProtocolError::FeeBpsTooHigh);
 }
 
+/// Require that a record (for example an agent profile) is active.
+pub fn require_active(env: &Env, active: bool) {
+    require(env, active, ProtocolError::InvalidInput);
+}
+
+/// Require that a binding (for example a wallet policy) is enabled.
+pub fn require_enabled(env: &Env, enabled: bool) {
+    require(env, enabled, ProtocolError::InvalidInput);
+}
+
 /// Keep instance storage alive for long-lived protocol state.
 pub fn bump_instance(env: &Env) {
     env.storage().instance().extend_ttl(INSTANCE_BUMP_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
+#[cfg(test)]
+mod tests {
+    use soroban_sdk::Env;
+
+    use super::{require_active, require_enabled};
+
+    #[test]
+    fn require_active_accepts_active_records() {
+        let env = Env::default();
+        require_active(&env, true);
+    }
+
+    #[test]
+    #[should_panic]
+    fn require_active_rejects_inactive_records() {
+        let env = Env::default();
+        require_active(&env, false);
+    }
+
+    #[test]
+    fn require_enabled_accepts_enabled_bindings() {
+        let env = Env::default();
+        require_enabled(&env, true);
+    }
+
+    #[test]
+    #[should_panic]
+    fn require_enabled_rejects_disabled_bindings() {
+        let env = Env::default();
+        require_enabled(&env, false);
+    }
 }

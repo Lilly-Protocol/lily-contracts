@@ -2,7 +2,7 @@
 
 //! Agent identity registry for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_non_empty, ProtocolError};
+use lily_common::{bump_instance, require, require_active, require_non_empty, ProtocolError};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String,
@@ -26,17 +26,30 @@ enum DataKey {
     Admin,
     Initialized,
     Profile(Address),
+    PinnedAdmin,
 }
 
 #[contractimpl]
 impl IdentityContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize the registry admin.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_initial_admin(&env, &admin);
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
@@ -74,7 +87,7 @@ impl IdentityContract {
         require_non_empty(&env, metadata_uri.len());
 
         let mut profile = get_profile_internal(&env, &agent);
-        require(&env, profile.active, ProtocolError::InvalidInput);
+        require_active(&env, profile.active);
         profile.controller.require_auth();
 
         profile.metadata_uri = metadata_uri;
@@ -117,6 +130,11 @@ fn ensure_initialized(env: &Env) {
         env.storage().instance().has(&DataKey::Initialized),
         ProtocolError::NotInitialized,
     );
+}
+
+fn require_initial_admin(env: &Env, admin: &Address) {
+    let pinned: Address = env.storage().instance().get(&DataKey::PinnedAdmin).unwrap_optimized();
+    require(env, *admin == pinned, ProtocolError::Unauthorized);
 }
 
 fn get_admin(env: &Env) -> Address {
