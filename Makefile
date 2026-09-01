@@ -26,16 +26,16 @@ fmt-check:
 	cargo fmt --all --check
 
 lint:
-	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy --locked --workspace --all-targets -- -D warnings
 
 check:
-	cargo check --workspace
+	cargo check --locked --workspace
 
 test:
-	cargo test --workspace
+	cargo test --locked --workspace
 
 build:
-	cargo build --workspace
+	cargo build --locked --workspace
 
 build-wasm:
 	@test -d "$$(rustc --print sysroot)/lib/rustlib/$(WASM_TARGET)/lib" || { \
@@ -43,7 +43,7 @@ build-wasm:
 		exit 1; \
 	}
 	@for pkg in $(CONTRACT_PACKAGES); do \
-		cargo build --target $(WASM_TARGET) --profile release --package $$pkg; \
+		cargo build --locked --target $(WASM_TARGET) --profile release --package $$pkg; \
 	done
 
 artifacts: build-wasm
