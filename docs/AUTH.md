@@ -1,56 +1,79 @@
-# Authorization model
+# Authorization Model
 
-Lily's contracts use Soroban's `Address::require_auth()` at each protected
-entry point. The required signer is resolved from contract state where a role
-is persistent (for example, the current admin or profile controller) and from
-the function arguments where the actor is initiating an operation (for
-example, an agent or wallet). A caller cannot select a different address and
-act on its behalf: the selected address must authorize the invocation.
+This document is the function-by-function authorization matrix for Lily Protocol.
+Every `require_auth()` call site in the workspace is listed, along with the
+reasoning behind each choice. The model separates **protocol governance**
+(admin), **agent lifecycle** (the agent itself), **delegated control**
+(controller), and **funding/policy ownership** (payer, wallet) so that each
+address holds only the minimum authority its role requires.
 
-Functions marked **Public** do not call `require_auth()`. They may be invoked
-without a signer, although normal validation still applies, such as requiring
-the contract to be initialized or the requested record to exist.
+## Vocabulary
 
-## Authorization matrix
+| Role | Meaning |
+| --- | --- |
+| `admin` | The protocol's governance address, stored at initialization per contract. |
+| initializer | The address passed to `initialize`; authorized exactly once to set the initial value. |
+| `agent` | A registered Lily agent (an `Address` with a profile). |
+| `controller` | The address delegated by an agent to manage its profile. |
+| `payer_agent` | The agent that opens a payment intent and funds it. |
+| `wallet` | The external wallet bound to an agent for settlement. |
 
-| Contract | Function | Required authorization | Rationale |
-| --- | --- | --- | --- |
-| Protocol | `initialize(admin, treasury, fee_bps)` | Proposed `admin` | Initialization installs a privileged configuration, so the address accepting the admin role must authorize it. The treasury does not authorize because it is only the destination recorded by the configuration. |
-| Protocol | `is_initialized()` | Public | This exposes only whether initialization has occurred and does not read or change privileged state. |
-| Protocol | `get_config()` | Public | Protocol configuration is on-chain public information and the function only reads it. |
-| Protocol | `set_fee_bps(fee_bps)` | Current `admin` | Fee policy affects all protocol users and is therefore restricted to the admin stored during initialization or the latest admin transfer. |
-| Protocol | `set_treasury(treasury)` | Current `admin` | Changing the fee destination is a protocol-wide privileged action. The new treasury is a destination, not a role being delegated authority, so it need not sign. |
-| Protocol | `transfer_admin(new_admin)` | Current `admin` | Only the current authority may delegate the admin role. The new admin does not need to authorize the transfer and becomes authoritative for later calls. |
-| Identity | `initialize(admin)` | Proposed `admin` | The address assuming administrative control must consent to initializing the registry. |
-| Identity | `register(agent, controller, metadata_uri)` | `agent` | Registration creates a record in the agent's name, so the agent must authorize it. The controller is assigned authority for later profile updates but does not authorize registration. |
-| Identity | `update_profile(agent, metadata_uri, new_controller)` | Current profile `controller` | Metadata maintenance and controller rotation belong to the controller already recorded for the agent. When rotating, the new controller does not authorize the same call; it controls subsequent updates. |
-| Identity | `deactivate(agent)` | Registry `admin` | Deactivation is an administrative enforcement action rather than a self-service profile update. |
-| Identity | `get_profile(agent)` | Public | Profiles are public registry data and reading one does not mutate its contents. |
-| Wallet | `initialize(admin)` | Proposed `admin` | The address named as registry admin must consent to initialization, even though current post-initialization wallet operations are agent-controlled. |
-| Wallet | `bind_wallet(agent, wallet, settlement_asset, spend_limit)` | Both `agent` and `wallet` | Binding links two independent addresses. Dual authorization proves the agent requests the policy and the wallet consents to being associated with it. |
-| Wallet | `update_spend_limit(agent, spend_limit)` | `agent` | The agent owns the policy envelope and must authorize changes to its spend limit. |
-| Wallet | `set_enabled(agent, enabled)` | `agent` | Enabling or disabling the agent's binding is controlled by that agent. |
-| Wallet | `get_binding(agent)` | Public | A wallet binding is registry state and may be read without authority. |
-| Payments | `initialize(admin, treasury, fee_bps)` | Proposed `admin` | The address accepting settlement authority must authorize the initial payment configuration. The treasury is only a configured destination. |
-| Payments | `get_config()` | Public | Payment configuration is public on-chain state and this function is read-only. |
-| Payments | `create_intent(payer_agent, payee_agent, amount, memo)` | `payer_agent` | Creating an intent commits the payer to a proposed payment, so the payer must authorize it. The payee receives no authority and need not sign. |
-| Payments | `settle_intent(intent_id, settlement_reference)` | Payments `admin` | Settlement is the trusted finalization step and is restricted to the configured settlement administrator. Neither party can unilaterally mark an intent settled. |
-| Payments | `cancel_intent(intent_id)` | Intent's recorded `payer_agent` | Only the payer that created the still-pending intent may cancel it. The signer comes from the stored intent rather than a caller-supplied address. |
-| Payments | `get_intent(intent_id)` | Public | Intent details and status are readable on-chain state and the function does not alter the intent. |
+Views (`*get_*`, `is_initialized`) require no authorization: they read state only and bump instance TTL.
 
-## Role boundaries
+## `contracts/protocol`
 
-- **Admin** authority is contract-specific. Initializing one Lily contract does
-  not confer privileges in another, even if deployments choose the same
-  address for both.
-- **Agent** and **controller** are distinct identity roles. The agent authorizes
-  its initial registration, while the stored controller manages later identity
-  updates. Wallet policy and payment initiation continue to require the agent
-  address directly.
-- **Wallet** authority is additionally required only when creating a binding.
-  Later policy changes are controlled by the bound agent.
-- **Payer** authority can create and cancel an intent, but cannot settle it.
-  Settlement remains an admin-only transition.
-- Authorization does not replace state validation. Initialization guards,
-  record-existence checks, value constraints, and payment-state rules are
-  enforced independently of the signer checks.
+| Function | Required authorization | Why |
+| --- | --- | --- |
+| `initialize` | initializer admin | One-shot bootstrap; the address chosen at deploy time becomes admin. |
+| `is_initialized` | none | Read-only bootstrap probe. |
+| `get_config` | none | Read-only view; consumers poll it constantly. |
+| `set_fee_bps` | stored admin | Changing the fee changes revenue split for every agent — a governance decision. |
+| `set_treasury` | stored admin | Treasury is where fees land; only governance may redirect it. |
+| `transfer_admin` | stored admin | Handing over governance must be ratified by the current holder; the old admin's authority is revoked because the stored `Admin` key is what every later check reads. |
+
+## `contracts/identity`
+
+| Function | Required authorization | Why |
+| --- | --- | --- |
+| `initialize` | initializer admin | Establishes the governance address for the registry. |
+| `register` | agent | An agent chooses its own controller and metadata on first registration; the controller is a *delegation* made by the agent, not an imposition. |
+| `update_profile` | profile controller | Day-to-day profile management is delegated to the controller; the agent does not need custody of every call, and a deactivated profile fails before auth matters (`require(profile.active)`), so an old controller cannot resurrect a profile. |
+| `deactivate` | stored admin | Deactivation is a governance action (offboarding an agent), which is why it is admin-gated rather than agent-gated. |
+| `get_profile` | none | Read-only view used by wallets, payments, and operators. |
+
+## `contracts/wallet`
+
+| Function | Required authorization | Why |
+| --- | --- | --- |
+| `initialize` | initializer admin | Establishes governance for the binding registry. |
+| `bind_wallet` | agent **and** wallet | Binding is a two-party decision: the agent must opt in to use the wallet, and the wallet must consent to being bound. Dual auth prevents either side being pinned to the other. |
+| `update_spend_limit` | agent | Spend limits protect the *agent's* budget; only the agent (through its own auth) decides how much policy headroom exists. |
+| `set_enabled` | agent | Enabling/disabling the binding is likewise the agent's policy choice. |
+| `get_binding` | none | Read-only view used by settlement checks. |
+
+## `contracts/payments`
+
+| Function | Required authorization | Why |
+| --- | --- | --- |
+| `initialize` | initializer admin | Establishes governance plus treasury/fee configuration. |
+| `get_config` | none | Read-only view. |
+| `create_intent` | payer agent | Opening a payment obligation must be an act of the payer; the payer agent's auth is the commitment that binds it to pay. |
+| `settle_intent` | stored admin | Settlement moves protocol-managed state to final; restricting it to admin keeps the lifecycle transition a governance act rather than something any participant can force. |
+| `cancel_intent` | intent payer | Only the payer that opened the intent can rescind it; the payer reference is captured on the intent at creation so a replacement payer cannot cancel someone else's intent. |
+| `get_intent` | none | Read-only view used by payees and operators. |
+
+## Cross-cutting invariants
+
+1. **Auth before state checks.** `initialize` enforces one-time semantics via a
+   `has(Initialized)` check *and* `require_auth()` on the initializer; views
+   check `ensure_initialized` first so they fail with `NotInitialized` rather
+   than reading empty state.
+2. **Stored principals, not call arguments.** Every admin-gated function re-reads
+   the `Admin` storage key instead of trusting an `admin` argument, so the
+   current holder of record is the only valid signer.
+3. **Delegation is per-record.** The controller is stored inside the agent's
+   `AgentProfile`; changing controllers goes through the controller-authorized
+   `update_profile` path, keeping delegation revocable by the current controller.
+4. **Payer capture at creation.** `PaymentIntent.payer_agent` is written once by
+   `create_intent` and then used for every later `cancel` auth check, so the
+   payer's authority is fixed at commitment time.
