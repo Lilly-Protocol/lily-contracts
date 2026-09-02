@@ -4,6 +4,7 @@
 use lily_common::{PaymentStatus, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::testutils::Ledger;
+use soroban_sdk::unwrap::UnwrapOptimized;
 
 use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
@@ -136,9 +137,7 @@ fn payer_can_cancel_pending_intents() {
 
 #[test]
 fn accepts_the_maximum_payment_amount() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let treasury = test_address(&env);
+    let (env, _admin, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
@@ -157,6 +156,48 @@ fn accepts_the_maximum_payment_amount() {
     );
 
     assert_eq!(client.get_intent(&id).amount, MAX_PAYMENT_AMOUNT);
+}
+
+#[test]
+fn lists_payer_intents_with_cursor_pagination() {
+    let (env, _admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let other_payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let first_id =
+        client.create_intent(&payer, &payee, &10_i128, &soroban_string(&env, "first"));
+    let second_id =
+        client.create_intent(&payer, &payee, &20_i128, &soroban_string(&env, "second"));
+    let third_id =
+        client.create_intent(&payer, &payee, &30_i128, &soroban_string(&env, "third"));
+    client.create_intent(
+        &other_payer,
+        &payee,
+        &40_i128,
+        &soroban_string(&env, "other payer"),
+    );
+
+    let first_page = client.list_intents(&payer, &0_u32, &2_u32);
+    assert_eq!(first_page.len(), 2);
+    assert_eq!(first_page.get(0).unwrap_optimized().id, first_id);
+    assert_eq!(first_page.get(1).unwrap_optimized().id, second_id);
+
+    let second_page = client.list_intents(&payer, &2_u32, &2_u32);
+    assert_eq!(second_page.len(), 1);
+    assert_eq!(second_page.get(0).unwrap_optimized().id, third_id);
+
+    let exhausted_page = client.list_intents(&payer, &3_u32, &2_u32);
+    assert!(exhausted_page.is_empty());
+}
+
+#[test]
+#[should_panic]
+fn rejects_zero_page_limit() {
+    let (env, _admin, client) = bootstrap();
+    let payer = test_address(&env);
+
+    client.list_intents(&payer, &0_u32, &0_u32);
 }
 
 #[test]
@@ -253,5 +294,4 @@ fn rejects_get_intent_on_missing_record() {
     client.initialize(&admin, &treasury, &50_u32);
     client.get_intent(&999_u64);
 }
-
 

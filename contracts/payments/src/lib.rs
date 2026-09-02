@@ -8,7 +8,7 @@ use lily_common::{
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
-    String,
+    String, Vec,
 };
 use wallet::WalletContractClient;
 
@@ -17,6 +17,9 @@ pub struct PaymentsContract;
 
 /// Largest payment amount that keeps future basis-point multiplication within i128.
 pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
+
+/// Maximum number of payment intents returned by one paginated query.
+pub const MAX_INTENTS_PAGE_SIZE: u32 = 100;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -52,6 +55,7 @@ enum DataKey {
     /// Maps an intent ID (`u64`) to its `PaymentIntent` record. Durability: Persistent.
     Intent(u64),
     PinnedAdmin,
+    PayerIntents(Address),
 }
 
 fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
@@ -191,6 +195,16 @@ impl PaymentsContract {
         };
 
         env.storage().persistent().set(&DataKey::Intent(id), &intent);
+        let payer_index_key = DataKey::PayerIntents(intent.payer_agent.clone());
+        let mut payer_intent_ids: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&payer_index_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        payer_intent_ids.push_back(id);
+        env.storage()
+            .persistent()
+            .set(&payer_index_key, &payer_intent_ids);
         env.storage().instance().set(&DataKey::NextIntentId, &checked_inc(&env, id));
         bump_instance(&env);
         env.events().publish((symbol_short!("create"), id), intent);

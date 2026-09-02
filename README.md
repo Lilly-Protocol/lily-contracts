@@ -63,6 +63,8 @@ This split prevents the silent state overwrites that would occur if `bind_wallet
 
 Payment intent and settlement primitive. Tracks payment intents, allows payer-side cancellation, and supports admin-driven settlement finalization.
 
+See [Payment intent indexes](./docs/PAYMENT_INDEXES.md) for payer pagination semantics and storage-cost considerations.
+
 ### `crates/lily-common`
 
 Shared contract utilities, typed protocol errors, payment status enum, basis point guards, and storage TTL helpers.
