@@ -27,18 +27,30 @@ enum DataKey {
     Admin,
     Initialized,
     Binding(Address),
+    PinnedAdmin,
 }
 
 #[contractimpl]
 impl WalletContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize the wallet policy registry.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -56,8 +68,8 @@ impl WalletContract {
         ensure_initialized(&env);
         require(&env, spend_limit > 0, ProtocolError::InvalidInput);
 
-        agent.require_auth();
-        wallet.require_auth();
+        require_auth_or_error(&agent, &env);
+        require_auth_or_error(&wallet, &env);
 
         let key = DataKey::Binding(agent.clone());
         if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
@@ -77,12 +89,12 @@ impl WalletContract {
         ensure_initialized(&env);
         require(&env, spend_limit > 0, ProtocolError::InvalidInput);
 
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
-        require(&env, binding.enabled, ProtocolError::InvalidInput);
+        require_enabled(&env, binding.enabled);
         binding.spend_limit = spend_limit;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
@@ -92,11 +104,11 @@ impl WalletContract {
     /// Enable or disable a wallet binding.
     pub fn set_enabled(env: Env, agent: Address, enabled: bool) {
         ensure_initialized(&env);
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
         binding.enabled = enabled;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
@@ -119,6 +131,7 @@ impl WalletContract {
     }
 
     /// Read the current binding for an agent.
+    #[must_use]
     pub fn get_binding(env: Env, agent: Address) -> WalletBinding {
         ensure_initialized(&env);
         bump_instance(&env);

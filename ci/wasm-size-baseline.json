@@ -1,0 +1,10 @@
+{
+  "updated": "2026-08-31T16:04:40Z",
+  "regression_tolerance": 0.05,
+  "max_bytes": {
+    "protocol": 6800,
+    "identity": 8918,
+    "wallet": 10169,
+    "payments": 14074
+  }
+}
