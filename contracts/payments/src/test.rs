@@ -4,7 +4,7 @@ use lily_common::PaymentStatus;
 use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::testutils::Ledger;
 
-use super::{PaymentIntent, PaymentsContract, PaymentsContractClient};
+use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
 fn bootstrap() -> (soroban_sdk::Env, soroban_sdk::Address, PaymentsContractClient<'static>) {
     let env = test_env();
@@ -91,6 +91,49 @@ fn payer_can_cancel_pending_intents() {
 }
 
 #[test]
+fn accepts_the_maximum_payment_amount() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &MAX_PAYMENT_AMOUNT,
+        &soroban_string(&env, "maximum payment"),
+    );
+
+    assert_eq!(client.get_intent(&id).amount, MAX_PAYMENT_AMOUNT);
+}
+
+#[test]
+#[should_panic]
+fn rejects_payment_amount_above_the_maximum() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.create_intent(
+        &payer,
+        &payee,
+        &(MAX_PAYMENT_AMOUNT + 1),
+        &soroban_string(&env, "too large"),
+    );
+}
+
+#[test]
 #[should_panic]
 fn rejects_settle_after_cancellation() {
     let env = test_env();
@@ -121,3 +164,35 @@ fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
     // the typed role check must fire first with ProtocolError::Unauthorized.
     client.settle_intent(&payer, &id, &soroban_string(&env, "tx-not-admin"));
 }
+
+#[test]
+#[should_panic]
+fn rejects_zero_amount_intent() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.create_intent(&payer, &payee, &0_i128, &soroban_string(&env, "invalid zero amount"));
+}
+
+#[test]
+#[should_panic]
+fn rejects_get_intent_on_missing_record() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.get_intent(&999_u64);
+}
+
+
