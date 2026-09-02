@@ -27,26 +27,81 @@ enum DataKey {
     Admin,
     Initialized,
     Binding(Address),
+    PinnedAdmin,
 }
 
 #[contractimpl]
 impl WalletContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize the wallet policy registry.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
         env.events().publish((symbol_short!("init"),), admin);
     }
 
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
+    }
+
     /// Bind an agent to a settlement wallet and policy envelope.
+    ///
+    /// Fails if the agent already has any binding (enabled or disabled).
+    /// Use `rebind_wallet` to explicitly replace an existing binding.
     pub fn bind_wallet(
+        env: Env,
+        agent: Address,
+        wallet: Address,
+        settlement_asset: Symbol,
+        spend_limit: i128,
+    ) {
+        ensure_initialized(&env);
+        require(&env, spend_limit > 0, ProtocolError::InvalidInput);
+
+        require_auth_or_error(&agent, &env);
+        require_auth_or_error(&wallet, &env);
+
+        let key = DataKey::Binding(agent.clone());
+        require(
+            &env,
+            !env.storage().persistent().has(&key),
+            ProtocolError::WalletAlreadyBound,
+        );
+
+        let binding =
+            WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
+
+        env.storage().persistent().set(&key, &binding);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("bind"), agent), binding);
+    }
+
+    /// Explicitly replace an existing wallet binding.
+    ///
+    /// Requires the agent to already have a binding. The new binding starts at
+    /// revision 0 and is enabled. This removes the silent overwrite behavior
+    /// that `bind_wallet` previously performed on disabled bindings.
+    pub fn rebind_wallet(
         env: Env,
         agent: Address,
         wallet: Address,
@@ -60,16 +115,23 @@ impl WalletContract {
         wallet.require_auth();
 
         let key = DataKey::Binding(agent.clone());
-        if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
-            require(&env, !existing.enabled, ProtocolError::WalletAlreadyBound);
-        }
+        require(
+            &env,
+            env.storage().persistent().has(&key),
+            ProtocolError::MissingRecord,
+        );
 
-        let binding =
-            WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
+        let binding = WalletBinding {
+            wallet,
+            settlement_asset,
+            spend_limit,
+            enabled: true,
+            revision: next_revision,
+        };
 
         env.storage().persistent().set(&key, &binding);
         bump_instance(&env);
-        env.events().publish((symbol_short!("bind"), agent), binding);
+        env.events().publish((symbol_short!("rebind"), agent), binding);
     }
 
     /// Update the spend limit for an enabled binding.
@@ -77,12 +139,12 @@ impl WalletContract {
         ensure_initialized(&env);
         require(&env, spend_limit > 0, ProtocolError::InvalidInput);
 
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
-        require(&env, binding.enabled, ProtocolError::InvalidInput);
+        require_enabled(&env, binding.enabled);
         binding.spend_limit = spend_limit;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
@@ -92,11 +154,11 @@ impl WalletContract {
     /// Enable or disable a wallet binding.
     pub fn set_enabled(env: Env, agent: Address, enabled: bool) {
         ensure_initialized(&env);
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
         binding.enabled = enabled;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
@@ -119,10 +181,19 @@ impl WalletContract {
     }
 
     /// Read the current binding for an agent.
+    #[must_use]
     pub fn get_binding(env: Env, agent: Address) -> WalletBinding {
         ensure_initialized(&env);
         bump_instance(&env);
         get_binding_internal(&env, &agent)
+    }
+
+
+    /// Read the current binding for an agent if one exists, returning `None` otherwise.
+    pub fn get_binding_opt(env: Env, agent: Address) -> Option<WalletBinding> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().get(&DataKey::Binding(agent))
     }
 }
 
