@@ -11,6 +11,9 @@ use soroban_sdk::{
 #[contract]
 pub struct WalletContract;
 
+/// Wallet contract schema version.
+pub const SCHEMA_VERSION: u32 = 1;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalletBinding {
@@ -21,11 +24,17 @@ pub struct WalletBinding {
     pub revision: u64,
 }
 
+/// Storage keys for wallet policy configuration and agent binding records.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the wallet policy registry admin `Address`. Durability: Instance.
     Admin,
+    /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
+    /// Maps an agent `Address` to their `WalletBinding` configuration. Durability: Persistent.
     Binding(Address),
     PinnedAdmin,
 }
@@ -54,6 +63,7 @@ impl WalletContract {
         );
         require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
         env.events().publish((symbol_short!("init"),), admin);

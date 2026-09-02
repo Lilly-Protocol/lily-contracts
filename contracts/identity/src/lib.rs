@@ -22,6 +22,7 @@ pub struct AgentProfile {
     pub revision: u64,
 }
 
+/// Storage keys for identity registry configuration and agent profile records.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IdentityConfig {
@@ -31,8 +32,11 @@ pub struct IdentityConfig {
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the identity registry admin `Address`. Durability: Instance.
     Admin,
+    /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Maps an agent `Address` to their `AgentProfile`. Durability: Persistent.
     Profile(Address),
     PinnedAdmin,
 }

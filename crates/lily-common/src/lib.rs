@@ -69,6 +69,18 @@ pub fn require_non_empty(env: &Env, len: u32) {
     require(env, len > 0, ProtocolError::InvalidInput);
 }
 
+/// Reject empty or whitespace-only Soroban strings for storage-bound metadata and reference fields.
+pub fn require_non_whitespace(env: &Env, s: &String) {
+    let len = s.len();
+    require(env, len > 0 && len <= MAX_STRING_LEN, ProtocolError::InvalidInput);
+    let mut buf = [0u8; MAX_STRING_LEN as usize];
+    s.copy_into_slice(&mut buf[..len as usize]);
+    let has_non_whitespace = buf[..len as usize]
+        .iter()
+        .any(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0B | 0x0C));
+    require(env, has_non_whitespace, ProtocolError::InvalidInput);
+}
+
 /// Reject fee values greater than 100%.
 pub fn require_valid_bps(env: &Env, fee_bps: u32) {
     require(env, fee_bps <= MAX_BPS, ProtocolError::FeeBpsTooHigh);

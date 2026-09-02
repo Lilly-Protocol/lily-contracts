@@ -33,15 +33,23 @@ pub struct PaymentIntent {
     pub created_at: u64,
 }
 
+/// Storage keys for settlement configuration and payment intent records.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the settlement admin `Address`. Durability: Instance.
     Admin,
+    /// Stores the protocol fee collector treasury `Address`. Durability: Instance.
     Treasury,
+    /// Stores the protocol fee in basis points (`u32`). Durability: Instance.
     FeeBps,
+    /// Stores the auto-incrementing `u64` identifier for next payment intent. Durability: Instance.
     NextIntentId,
     Wallet,
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
+    /// Maps an intent ID (`u64`) to its `PaymentIntent` record. Durability: Persistent.
     Intent(u64),
     PinnedAdmin,
 }
@@ -109,6 +117,13 @@ impl PaymentsContract {
     /// Return whether the contract has been initialized.
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
+    }
+
+    /// Return the contract schema version.
+    pub fn schema_version(env: Env) -> u32 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::SchemaVersion).unwrap_or(SCHEMA_VERSION)
     }
 
     /// Return the active payments configuration.
