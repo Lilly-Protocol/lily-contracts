@@ -147,6 +147,7 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Event emission on state transitions
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
+- Documented storage layouts, TTL policy, and auth model (see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md))
 
 ## Compatibility policies
 
