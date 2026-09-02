@@ -7,7 +7,7 @@ use lily_common::{
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
-    String,
+    String, Symbol,
 };
 
 #[contract]
@@ -85,6 +85,9 @@ impl IdentityContract {
     }
 
     /// Update metadata and optionally rotate the controller.
+    ///
+    /// Emits `metadata_updated` when the metadata URI changes and
+    /// `controller_rotated` when the controller changes.
     pub fn update_profile(
         env: Env,
         agent: Address,
@@ -98,6 +101,11 @@ impl IdentityContract {
         require(&env, profile.active, ProtocolError::InvalidInput);
         require_auth_or_error(&profile.controller, &env);
 
+        let metadata_changed = profile.metadata_uri != metadata_uri;
+        let controller_changed = new_controller
+            .as_ref()
+            .is_some_and(|next| next != &profile.controller);
+
         profile.metadata_uri = metadata_uri;
         if let Some(next_controller) = new_controller {
             profile.controller = next_controller;
@@ -106,7 +114,19 @@ impl IdentityContract {
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
-        env.events().publish((symbol_short!("update"), agent), profile);
+
+        if metadata_changed {
+            env.events().publish(
+                (Symbol::new(&env, "metadata_updated"), agent.clone()),
+                profile.metadata_uri.clone(),
+            );
+        }
+        if controller_changed {
+            env.events().publish(
+                (Symbol::new(&env, "controller_rotated"), agent.clone()),
+                profile.controller.clone(),
+            );
+        }
     }
 
     /// Disable an agent profile through admin action.
