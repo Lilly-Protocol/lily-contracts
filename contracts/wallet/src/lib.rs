@@ -2,7 +2,7 @@
 
 //! Agent wallet binding and policy contract.
 
-use lily_common::{bump_instance, require, require_enabled, ProtocolError};
+use lily_common::{bump_instance, require, ProtocolError};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     Symbol,
@@ -50,8 +50,7 @@ impl WalletContract {
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        require_initial_admin(&env, &admin);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -69,8 +68,8 @@ impl WalletContract {
         ensure_initialized(&env);
         require(&env, spend_limit > 0, ProtocolError::InvalidInput);
 
-        agent.require_auth();
-        wallet.require_auth();
+        require_auth_or_error(&agent, &env);
+        require_auth_or_error(&wallet, &env);
 
         let key = DataKey::Binding(agent.clone());
         if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
@@ -90,7 +89,7 @@ impl WalletContract {
         ensure_initialized(&env);
         require(&env, spend_limit > 0, ProtocolError::InvalidInput);
 
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
         require_enabled(&env, binding.enabled);
@@ -105,7 +104,7 @@ impl WalletContract {
     /// Enable or disable a wallet binding.
     pub fn set_enabled(env: Env, agent: Address, enabled: bool) {
         ensure_initialized(&env);
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
         binding.enabled = enabled;
@@ -114,6 +113,21 @@ impl WalletContract {
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
         env.events().publish((symbol_short!("state"), agent), binding);
+    }
+
+    /// Admin emergency deactivation of a wallet binding.
+    pub fn admin_deactivate(env: Env, agent: Address) {
+        ensure_initialized(&env);
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        let mut binding = get_binding_internal(&env, &agent);
+        binding.enabled = false;
+        binding.revision += 1;
+
+        env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("adm_deact"), agent), binding);
     }
 
     /// Read the current binding for an agent.
@@ -132,9 +146,8 @@ fn ensure_initialized(env: &Env) {
     );
 }
 
-fn require_initial_admin(env: &Env, admin: &Address) {
-    let pinned: Address = env.storage().instance().get(&DataKey::PinnedAdmin).unwrap_optimized();
-    require(env, *admin == pinned, ProtocolError::Unauthorized);
+fn get_admin(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
 }
 
 fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {
@@ -145,3 +158,4 @@ fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {
 }
 
 mod test;
+

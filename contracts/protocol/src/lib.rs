@@ -2,7 +2,9 @@
 
 //! Global protocol configuration contract for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_valid_bps, ProtocolError};
+use lily_common::{
+    bump_instance, require, require_auth_or_error, require_valid_bps, ProtocolError,
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
 };
@@ -51,7 +53,7 @@ impl ProtocolContract {
         require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
 
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -88,7 +90,7 @@ impl ProtocolContract {
         require_valid_bps(&env, fee_bps);
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         bump_instance(&env);
@@ -100,7 +102,7 @@ impl ProtocolContract {
         ensure_initialized(&env);
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         bump_instance(&env);
@@ -112,7 +114,7 @@ impl ProtocolContract {
         ensure_initialized(&env);
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &new_admin);
         bump_instance(&env);
