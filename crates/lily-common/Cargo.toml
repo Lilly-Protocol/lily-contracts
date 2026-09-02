@@ -1,5 +1,8 @@
 [package]
 name = "lily-common"
+description = "Shared types, errors and helpers used across Lily Protocol Soroban contracts"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

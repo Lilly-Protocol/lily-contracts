@@ -1,5 +1,8 @@
 [package]
 name = "identity"
+description = "Soroban smart contract for Lily Protocol agent identity registration and management"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

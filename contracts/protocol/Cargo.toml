@@ -1,5 +1,8 @@
 [package]
 name = "protocol"
+description = "Core Soroban contract implementing Lily Protocol messaging and agreement flows"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
