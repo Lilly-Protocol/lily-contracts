@@ -1,19 +1,24 @@
-name: Nightly CI
+name: Nightly Toolchain Build
 
 on:
   schedule:
-    - cron: '0 2 * * *' # Every day at 02:00 UTC
+    # Run nightly at 02:00 UTC
+    - cron: '0 2 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   nightly-checks:
-    name: Nightly Toolchain & Upstream Checks
+    name: Nightly Toolchain Validation
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up latest stable Rust
+      - name: Set up latest Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -21,9 +26,6 @@ jobs:
 
       - name: Install Stellar CLI
         uses: stellar/stellar-cli@v23.0.1
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
 
       - name: Show tool versions
         run: ./scripts/check-tooling.sh
