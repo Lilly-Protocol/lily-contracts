@@ -108,6 +108,14 @@ You can inspect the local toolchain status with:
 ./scripts/check-tooling.sh
 ```
 
+Before deploying or invoking contracts, check that a Soroban RPC endpoint is responding:
+
+```bash
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org ./scripts/rpc-health.sh
+```
+
+The health probe calls both `getHealth` and `getLatestLedger` and exits non-zero on an HTTP, transport, or JSON-RPC failure.
+
 ## Common development commands
 
 ```bash
