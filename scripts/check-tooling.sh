@@ -46,6 +46,16 @@ else
   missing_count=$((missing_count + 1))
 fi
 
+# Extract soroban-sdk major version from workspace
+SDK_MAJOR=""
+if [ -f "$REPO_ROOT/Cargo.lock" ]; then
+  SDK_MAJOR="$(sed -n '/name = "soroban-sdk"/{n;s/version = "\([0-9]*\).*/\1/p;}' "$REPO_ROOT/Cargo.lock" | head -n 1)"
+fi
+if [ -z "$SDK_MAJOR" ] && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+  SDK_MAJOR="$(grep -E '^[[:space:]]*soroban-sdk[[:space:]]*=' "$REPO_ROOT/Cargo.toml" | sed -E 's/.*"([0-9]+).*/\1/' | head -n 1)"
+fi
+SDK_MAJOR="${SDK_MAJOR:-22}"
+
 if command -v stellar >/dev/null 2>&1; then
   have stellar stellar --version
 else

@@ -1,5 +1,8 @@
 [package]
 name = "protocol"
+description = "Core Soroban contract implementing Lily Protocol messaging and agreement flows"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,6 +27,7 @@ lily-common = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+payments = { path = "../payments" }
 
 [lints]
 workspace = true

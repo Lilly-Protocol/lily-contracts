@@ -23,6 +23,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -31,10 +35,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-          targets: wasm32v1-none
+        uses: dtolnay/rust-toolchain@1.83
 
       - name: Install Stellar CLI
         # Pinned to the v22 line to match soroban-sdk 22 (Cargo.lock);
@@ -55,6 +56,9 @@ jobs:
 
       - name: Lint
         run: make lint
+
+      - name: Doc check
+        run: make docs
 
       - name: Test
         run: make test

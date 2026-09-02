@@ -10,6 +10,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String, Vec,
 };
+use wallet::WalletContractClient;
 
 #[contract]
 pub struct PaymentsContract;
@@ -19,15 +20,6 @@ pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
 
 /// Maximum number of payment intents returned by one paginated query.
 pub const MAX_INTENTS_PAGE_SIZE: u32 = 100;
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PaymentsConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
-    pub next_intent_id: u64,
-}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,17 +36,42 @@ pub struct PaymentIntent {
     pub created_at: u64,
 }
 
+/// Storage keys for settlement configuration and payment intent records.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the settlement admin `Address`. Durability: Instance.
     Admin,
+    /// Stores the protocol fee collector treasury `Address`. Durability: Instance.
     Treasury,
+    /// Stores the protocol fee in basis points (`u32`). Durability: Instance.
     FeeBps,
+    /// Stores the auto-incrementing `u64` identifier for next payment intent. Durability: Instance.
     NextIntentId,
+    Wallet,
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
+    /// Maps an intent ID (`u64`) to its `PaymentIntent` record. Durability: Persistent.
     Intent(u64),
     PinnedAdmin,
     PayerIntents(Address),
+}
+
+fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
+    match status {
+        PaymentStatus::Pending => symbol_short!("pending"),
+        PaymentStatus::Settled => symbol_short!("settled"),
+        PaymentStatus::Cancelled => symbol_short!("cancelled"),
+    }
+}
+
+fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
+    match status {
+        PaymentStatus::Pending => symbol_short!("pending"),
+        PaymentStatus::Settled => symbol_short!("settled"),
+        PaymentStatus::Cancelled => symbol_short!("cancelled"),
+    }
 }
 
 #[contractimpl]
@@ -88,10 +105,29 @@ impl PaymentsContract {
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::NextIntentId, &1_u64);
+        env.storage().instance().set(&DataKey::Wallet, &wallet);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
 
-        env.events().publish((symbol_short!("init"),), treasury);
+        let config = PaymentsConfig {
+            admin: admin.clone(),
+            treasury: treasury.clone(),
+            fee_bps,
+            next_intent_id: 1,
+        };
+        env.events().publish((symbol_short!("init"), admin), config);
+    }
+
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
+    }
+
+    /// Return the contract schema version.
+    pub fn schema_version(env: Env) -> u32 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::SchemaVersion).unwrap_or(SCHEMA_VERSION)
     }
 
     /// Return the active payments configuration.
@@ -99,12 +135,18 @@ impl PaymentsContract {
     pub fn get_config(env: Env) -> PaymentsConfig {
         ensure_initialized(&env);
         bump_instance(&env);
-        PaymentsConfig {
-            admin: get_admin(&env),
-            treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
-            fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
-            next_intent_id: env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized(),
+        ProtocolConfig {
+            admin: read_instance(&env, DataKey::Admin),
+            treasury: read_instance(&env, DataKey::Treasury),
+            fee_bps: read_instance(&env, DataKey::FeeBps),
         }
+    }
+
+    /// Return the next intent id counter.
+    pub fn get_next_intent_id(env: Env) -> u64 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        read_instance(&env, DataKey::NextIntentId)
     }
 
     /// Create a payment intent that can be settled asynchronously.
@@ -126,6 +168,18 @@ impl PaymentsContract {
         require(&env, payer_agent != payee_agent, ProtocolError::InvalidInput);
 
         payer_agent.require_auth();
+
+        let wallet: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Wallet)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord));
+        let wallet_client = crate::WalletContractClient::new(&env, &wallet);
+        require(
+            &env,
+            wallet_client.has_active_binding(&payer_agent),
+            ProtocolError::WalletNotBound,
+        );
 
         let id: u64 = env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized();
 
@@ -180,12 +234,16 @@ impl PaymentsContract {
             intent.status == PaymentStatus::Pending,
             ProtocolError::PaymentAlreadyFinalized,
         );
+        let prior_status = intent.status;
         intent.status = PaymentStatus::Settled;
         intent.settlement_reference = settlement_reference;
 
         env.storage().persistent().set(&DataKey::Intent(intent_id), &intent);
         bump_instance(&env);
-        env.events().publish((symbol_short!("settle"), intent_id), intent);
+        env.events().publish(
+            (symbol_short!("settle"), intent_id, payment_status_symbol(prior_status)),
+            intent,
+        );
     }
 
     /// Cancel a payment intent before settlement.
@@ -202,10 +260,53 @@ impl PaymentsContract {
             ProtocolError::PaymentAlreadyFinalized,
         );
 
+        let prior_status = intent.status;
         intent.status = PaymentStatus::Cancelled;
         env.storage().persistent().set(&DataKey::Intent(intent_id), &intent);
         bump_instance(&env);
-        env.events().publish((symbol_short!("cancel"), intent_id), intent);
+        env.events().publish(
+            (symbol_short!("cancel"), intent_id, payment_status_symbol(prior_status)),
+            intent,
+        );
+    }
+
+
+
+    /// Update the fee charged on payment intents, in basis points.
+    pub fn set_fee_bps(env: Env, fee_bps: u32) {
+        ensure_initialized(&env);
+        require_valid_bps(&env, fee_bps);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("fee"), admin), fee_bps);
+    }
+
+    /// Update the treasury address used to collect fees.
+    pub fn set_treasury(env: Env, treasury: Address) {
+        ensure_initialized(&env);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Treasury, &treasury);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("treasury"), admin), treasury);
+    }
+
+    /// Transfer payments admin authority.
+    pub fn transfer_admin(env: Env, new_admin: Address) {
+        ensure_initialized(&env);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("admin"), admin), new_admin);
     }
 
     /// Read an individual payment intent.
@@ -216,37 +317,12 @@ impl PaymentsContract {
         get_intent_internal(&env, intent_id)
     }
 
-    /// Return a bounded page of a payer's intents in creation order.
-    pub fn list_intents(
-        env: Env,
-        payer_agent: Address,
-        cursor: u32,
-        limit: u32,
-    ) -> Vec<PaymentIntent> {
+
+    /// Read an individual payment intent if it exists, returning `None` otherwise.
+    pub fn get_intent_opt(env: Env, intent_id: u64) -> Option<PaymentIntent> {
         ensure_initialized(&env);
-        require(
-            &env,
-            limit > 0 && limit <= MAX_INTENTS_PAGE_SIZE,
-            ProtocolError::InvalidInput,
-        );
-
-        let intent_ids: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PayerIntents(payer_agent))
-            .unwrap_or_else(|| Vec::new(&env));
-        let mut intents = Vec::new(&env);
-        let end = core::cmp::min(cursor.saturating_add(limit), intent_ids.len());
-        let mut index = cursor;
-
-        while index < end {
-            let intent_id = intent_ids.get(index).unwrap_optimized();
-            intents.push_back(get_intent_internal(&env, intent_id));
-            index += 1;
-        }
-
         bump_instance(&env);
-        intents
+        env.storage().persistent().get(&DataKey::Intent(intent_id))
     }
 }
 
@@ -264,7 +340,7 @@ fn require_initial_admin(env: &Env, admin: &Address) {
 }
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    read_instance(env, DataKey::Admin)
 }
 
 fn get_intent_internal(env: &Env, intent_id: u64) -> PaymentIntent {

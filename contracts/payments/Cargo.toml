@@ -1,5 +1,8 @@
 [package]
 name = "payments"
+description = "Soroban smart contract for Lily Protocol agent-to-agent payments and settlement"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +23,7 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 lily-common = { workspace = true }
+wallet = { path = "../wallet" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

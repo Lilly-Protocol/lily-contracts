@@ -7,7 +7,7 @@ use lily_common::{
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
-    String,
+    String, Symbol,
 };
 
 #[contract]
@@ -22,11 +22,21 @@ pub struct AgentProfile {
     pub revision: u64,
 }
 
+/// Storage keys for identity registry configuration and agent profile records.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdentityConfig {
+    pub admin: Address,
+}
+
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the identity registry admin `Address`. Durability: Instance.
     Admin,
+    /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Maps an agent `Address` to their `AgentProfile`. Durability: Persistent.
     Profile(Address),
     PinnedAdmin,
 }
@@ -57,7 +67,12 @@ impl IdentityContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
-        env.events().publish((symbol_short!("init"),), admin);
+        env.events().publish((symbol_short!("init"), admin.clone()), IdentityConfig { admin });
+    }
+
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
     }
 
     /// Register a new agent profile controlled by a specific address.
@@ -80,6 +95,9 @@ impl IdentityContract {
     }
 
     /// Update metadata and optionally rotate the controller.
+    ///
+    /// Emits `metadata_updated` when the metadata URI changes and
+    /// `controller_rotated` when the controller changes.
     pub fn update_profile(
         env: Env,
         agent: Address,
@@ -93,6 +111,11 @@ impl IdentityContract {
         require(&env, profile.active, ProtocolError::InvalidInput);
         require_auth_or_error(&profile.controller, &env);
 
+        let metadata_changed = profile.metadata_uri != metadata_uri;
+        let controller_changed = new_controller
+            .as_ref()
+            .is_some_and(|next| next != &profile.controller);
+
         profile.metadata_uri = metadata_uri;
         if let Some(next_controller) = new_controller {
             profile.controller = next_controller;
@@ -101,16 +124,35 @@ impl IdentityContract {
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
-        env.events().publish((symbol_short!("update"), agent), profile);
+
+        if metadata_changed {
+            env.events().publish(
+                (Symbol::new(&env, "metadata_updated"), agent.clone()),
+                profile.metadata_uri.clone(),
+            );
+        }
+        if controller_changed {
+            env.events().publish(
+                (Symbol::new(&env, "controller_rotated"), agent.clone()),
+                profile.controller.clone(),
+            );
+        }
     }
 
     /// Disable an agent profile through admin action.
+    ///
+    /// Repeated calls on an already inactive profile are a no-op and do not
+    /// increment the revision or emit an event.
     pub fn deactivate(env: Env, agent: Address) {
         ensure_initialized(&env);
         let admin = get_admin(&env);
         require_auth_or_error(&admin, &env);
 
         let mut profile = get_profile_internal(&env, &agent);
+        if !profile.active {
+            bump_instance(&env);
+            return;
+        }
         profile.active = false;
         profile.revision = checked_inc(&env, profile.revision);
 
@@ -140,6 +182,14 @@ impl IdentityContract {
         ensure_initialized(&env);
         bump_instance(&env);
         get_profile_internal(&env, &agent)
+    }
+
+
+    /// Fetch a registered profile if it exists, returning `None` for missing records.
+    pub fn get_profile_opt(env: Env, agent: Address) -> Option<AgentProfile> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().get(&DataKey::Profile(agent))
     }
 }
 

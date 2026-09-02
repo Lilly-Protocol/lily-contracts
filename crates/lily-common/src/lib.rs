@@ -21,7 +21,9 @@ pub const INSTANCE_BUMP_AMOUNT: u32 = 172_800;
 /// Numeric discriminants are part of the on-wire encoding; new variants are
 /// appended at the end so previously encoded values keep their identity.
 #[contracterror]
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[non_exhaustive]
 #[repr(u32)]
 pub enum ProtocolError {
     AlreadyInitialized = 1,
@@ -40,11 +42,23 @@ pub enum ProtocolError {
 /// Shared payment status used by settlement-oriented contracts.
 #[non_exhaustive]
 #[contracttype]
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum PaymentStatus {
     Pending,
     Settled,
     Cancelled,
+}
+
+/// Shared protocol configuration fields used by both the protocol and payments
+/// contracts.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProtocolConfig {
+    pub admin: Address,
+    pub treasury: Address,
+    pub fee_bps: u32,
 }
 
 /// Panic with a typed contract error when a condition is not satisfied.
@@ -57,6 +71,18 @@ pub fn require(env: &Env, condition: bool, error: ProtocolError) {
 /// Reject empty Soroban strings for storage-bound metadata fields.
 pub fn require_non_empty(env: &Env, len: u32) {
     require(env, len > 0, ProtocolError::InvalidInput);
+}
+
+/// Reject empty or whitespace-only Soroban strings for storage-bound metadata and reference fields.
+pub fn require_non_whitespace(env: &Env, s: &String) {
+    let len = s.len();
+    require(env, len > 0 && len <= MAX_STRING_LEN, ProtocolError::InvalidInput);
+    let mut buf = [0u8; MAX_STRING_LEN as usize];
+    s.copy_into_slice(&mut buf[..len as usize]);
+    let has_non_whitespace = buf[..len as usize]
+        .iter()
+        .any(|&b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r' | 0x0B | 0x0C));
+    require(env, has_non_whitespace, ProtocolError::InvalidInput);
 }
 
 /// Reject fee values greater than 100%.

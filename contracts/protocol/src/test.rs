@@ -42,6 +42,48 @@ fn initializes_once_and_reads_config() {
 }
 
 #[test]
+fn initialize_emits_init_event() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &250_u32);
+
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
+    let event = events.get_unchecked(0);
+    assert_eq!(event.0, contract_id);
+
+    let topic0: soroban_sdk::Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("init"));
+
+    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
+    assert_eq!(topic1, admin);
+
+    let data: ProtocolConfig = event.2.try_into_val(&env).unwrap();
+    assert_eq!(
+        data,
+        ProtocolConfig {
+            admin: admin.clone(),
+            treasury: treasury.clone(),
+            fee_bps: 250,
+        }
+    );
+}
+
+#[test]
+#[should_panic]
+fn rejects_config_read_before_initialization() {
+    let env = test_env();
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+    client.get_config();
+}
+
+#[test]
 #[should_panic]
 fn rejects_reinitialization() {
     let env = test_env();
@@ -53,6 +95,18 @@ fn rejects_reinitialization() {
 
     client.initialize(&admin, &treasury, &100_u32);
     client.initialize(&admin, &treasury, &100_u32);
+}
+
+#[test]
+#[should_panic]
+fn get_config_before_initialize_panics_not_initialized() {
+    // ensure_initialized panics with ProtocolError::NotInitialized via panic_with_error
+    // when DataKey::Initialized is absent (lily_common::require -> panic_with_error!).
+    let env = test_env();
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    let _ = client.get_config();
 }
 
 #[test]

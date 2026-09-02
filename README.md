@@ -52,6 +52,13 @@ Agent identity registry. Supports protocol bootstrapping, agent registration, co
 
 Wallet policy registry. Maintains agent-to-wallet bindings, settlement asset symbols, spend limits, and enabled state toggles.
 
+Binding lifecycle:
+- `bind_wallet` creates a brand-new binding and fails if the agent already has one.
+- `rebind_wallet` explicitly replaces an existing binding (enabled or disabled) with a new wallet, asset, and spend limit, resetting revision to 0.
+- `update_spend_limit` and `set_enabled` mutate the current binding without replacing it.
+
+This split prevents the silent state overwrites that would occur if `bind_wallet` were reused after a binding had been disabled.
+
 ### `contracts/payments`
 
 Payment intent and settlement primitive. Tracks payment intents, allows payer-side cancellation, and supports admin-driven settlement finalization.
@@ -130,7 +137,11 @@ make build
 make build-wasm
 make artifacts
 make ci
+
+The `make artifacts` target also generates `dist/manifest.json` with sha256 hashes, package versions, git commit, and build profile for each Wasm artifact.
 ```
+
+The lint target runs clippy with `--all-features` and the pedantic group enabled. A workspace allow-list suppresses stylistic lints that are not actionable for this codebase (`must_use_candidate`, `needless_pass_by_value`, `similar_names`, `missing_panics_doc`, `should_panic_without_expect`).
 
 ## Contract development approach
 
@@ -139,13 +150,21 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Typed storage keys and typed return structs
 - Explicit initialization guards
 - Auth-gated admin and actor actions
-- Event emission on state transitions
+- Event emission on state transitions (see [docs/EVENTS.md](./docs/EVENTS.md))
+- Fee configuration in basis points with a documented treasury role (see [docs/FEES.md](./docs/FEES.md))
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
+- Documented storage layouts, TTL policy, and auth model (see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md))
 
 ## Compatibility policies
 
 - [Event compatibility policy](./docs/EVENT_COMPATIBILITY.md) — additive and versioned change rules for topics and payloads consumed by indexers
+
+See [Contract Testing](./docs/TESTING.md) for guidance on mock authorization,
+real-auth negative tests, and the current authorization coverage debt.
+
+For the signer requirements of every contract entry point and the reasoning
+behind each role boundary, see the [authorization model](./docs/AUTH.md).
 
 ## Future protocol areas intentionally left for follow-up
 
@@ -157,9 +176,18 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Fuzzing, invariants, and deeper adversarial testing
 - Mainnet deployment manifests and release signing
 
+## Documentation
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — setup, conventions, and PR expectations.
+- [docs/ERRORS.md](./docs/ERRORS.md) — protocol error codes, raise sites, and triggering conditions.
+
 ## Contributing
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Contributors should keep changes scoped to a clear protocol concern and include tests for any state transition, auth path, or storage behavior they modify.
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request and
+review the project's [CHANGELOG.md](./CHANGELOG.md) for unreleased contract and
+tooling changes. Contributors should keep changes scoped to a clear protocol
+concern and include tests for any state transition, auth path, or storage
+behavior they modify.
 
 ## Security
 

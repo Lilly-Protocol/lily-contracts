@@ -11,6 +11,9 @@ use soroban_sdk::{
 #[contract]
 pub struct WalletContract;
 
+/// Wallet contract schema version.
+pub const SCHEMA_VERSION: u32 = 1;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalletBinding {
@@ -21,11 +24,17 @@ pub struct WalletBinding {
     pub revision: u64,
 }
 
+/// Storage keys for wallet policy configuration and agent binding records.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
+    /// Stores the wallet policy registry admin `Address`. Durability: Instance.
     Admin,
+    /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
+    /// Maps an agent `Address` to their `WalletBinding` configuration. Durability: Persistent.
     Binding(Address),
     PinnedAdmin,
 }
@@ -54,12 +63,21 @@ impl WalletContract {
         );
         require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
         env.events().publish((symbol_short!("init"),), admin);
     }
 
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
+    }
+
     /// Bind an agent to a settlement wallet and policy envelope.
+    ///
+    /// Fails if the agent already has any binding (enabled or disabled).
+    /// Use `rebind_wallet` to explicitly replace an existing binding.
     pub fn bind_wallet(
         env: Env,
         agent: Address,
@@ -74,9 +92,11 @@ impl WalletContract {
         require_auth_or_error(&wallet, &env);
 
         let key = DataKey::Binding(agent.clone());
-        if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
-            require(&env, !existing.enabled, ProtocolError::WalletAlreadyBound);
-        }
+        require(
+            &env,
+            !env.storage().persistent().has(&key),
+            ProtocolError::WalletAlreadyBound,
+        );
 
         let binding =
             WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
@@ -84,6 +104,44 @@ impl WalletContract {
         env.storage().persistent().set(&key, &binding);
         bump_instance(&env);
         env.events().publish((symbol_short!("bind"), agent), binding);
+    }
+
+    /// Explicitly replace an existing wallet binding.
+    ///
+    /// Requires the agent to already have a binding. The new binding starts at
+    /// revision 0 and is enabled. This removes the silent overwrite behavior
+    /// that `bind_wallet` previously performed on disabled bindings.
+    pub fn rebind_wallet(
+        env: Env,
+        agent: Address,
+        wallet: Address,
+        settlement_asset: Symbol,
+        spend_limit: i128,
+    ) {
+        ensure_initialized(&env);
+        require(&env, spend_limit > 0, ProtocolError::InvalidInput);
+
+        agent.require_auth();
+        wallet.require_auth();
+
+        let key = DataKey::Binding(agent.clone());
+        require(
+            &env,
+            env.storage().persistent().has(&key),
+            ProtocolError::MissingRecord,
+        );
+
+        let binding = WalletBinding {
+            wallet,
+            settlement_asset,
+            spend_limit,
+            enabled: true,
+            revision: next_revision,
+        };
+
+        env.storage().persistent().set(&key, &binding);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("rebind"), agent), binding);
     }
 
     /// Update the spend limit for an enabled binding.
@@ -138,6 +196,14 @@ impl WalletContract {
         ensure_initialized(&env);
         bump_instance(&env);
         get_binding_internal(&env, &agent)
+    }
+
+
+    /// Read the current binding for an agent if one exists, returning `None` otherwise.
+    pub fn get_binding_opt(env: Env, agent: Address) -> Option<WalletBinding> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().get(&DataKey::Binding(agent))
     }
 }
 

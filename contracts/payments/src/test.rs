@@ -28,6 +28,23 @@ fn returns_protocol_version() {
     assert_eq!(client.version(), PROTOCOL_VERSION);
 }
 
+fn setup_wallet(env: &soroban_sdk::Env, admin: &soroban_sdk::Address) -> soroban_sdk::Address {
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(env, &contract_id);
+    client.initialize(admin);
+    contract_id
+}
+
+fn bind_payer(
+    env: &soroban_sdk::Env,
+    wallet_id: &soroban_sdk::Address,
+    payer: &soroban_sdk::Address,
+) {
+    let wallet_addr = test_address(env);
+    let client = WalletContractClient::new(env, wallet_id);
+    client.bind_wallet(payer, &wallet_addr, &symbol_short!("USDC"), &10_000_i128);
+}
+
 #[test]
 fn creates_and_settles_payment_intents() {
     let (env, admin, client) = bootstrap();
@@ -42,6 +59,13 @@ fn creates_and_settles_payment_intents() {
     );
 
     assert_eq!(id, 1);
+    assert_eq!(client.get_next_intent_id(), 2);
+
+    let config = client.get_config();
+    assert_eq!(config.admin, admin);
+    assert_eq!(config.treasury, treasury);
+    assert_eq!(config.fee_bps, 50);
+
     let intent = client.get_intent(&id);
     assert_eq!(
         intent,
@@ -117,6 +141,13 @@ fn accepts_the_maximum_payment_amount() {
     let payer = test_address(&env);
     let payee = test_address(&env);
 
+    let wallet_id = setup_wallet(&env, &admin);
+    bind_payer(&env, &wallet_id, &payer);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32, &wallet_id);
     let id = client.create_intent(
         &payer,
         &payee,
@@ -178,6 +209,9 @@ fn rejects_payment_amount_above_the_maximum() {
     let payer = test_address(&env);
     let payee = test_address(&env);
 
+    let wallet_id = setup_wallet(&env, &admin);
+    bind_payer(&env, &wallet_id, &payer);
+
     let contract_id = env.register(PaymentsContract, ());
     let client = PaymentsContractClient::new(&env, &contract_id);
 
@@ -192,6 +226,15 @@ fn rejects_payment_amount_above_the_maximum() {
 
 #[test]
 #[should_panic]
+fn rejects_config_read_before_initialization() {
+    let env = test_env();
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+    client.get_config();
+}
+
+#[test]
+#[should_panic]
 fn rejects_settle_after_cancellation() {
     let env = test_env();
     let admin = test_address(&env);
@@ -202,7 +245,7 @@ fn rejects_settle_after_cancellation() {
     let contract_id = env.register(PaymentsContract, (admin.clone(),));
     let client = PaymentsContractClient::new(&env, &contract_id);
 
-    client.initialize(&admin, &treasury, &50_u32);
+    client.initialize(&admin, &treasury, &50_u32, &wallet_id);
     let id = client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, "cancel me"));
     client.cancel_intent(&id);
     client.settle_intent(&admin, &id, &soroban_string(&env, "tx-0002"));
