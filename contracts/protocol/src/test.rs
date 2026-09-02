@@ -76,6 +76,15 @@ fn initialize_emits_init_event() {
 
 #[test]
 #[should_panic]
+fn rejects_config_read_before_initialization() {
+    let env = test_env();
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+    client.get_config();
+}
+
+#[test]
+#[should_panic]
 fn rejects_reinitialization() {
     let env = test_env();
     let admin = test_address(&env);
