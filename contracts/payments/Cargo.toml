@@ -20,6 +20,7 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 lily-common = { workspace = true }
+wallet = { path = "../wallet" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

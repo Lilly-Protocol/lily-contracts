@@ -10,6 +10,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String,
 };
+use wallet::WalletContractClient;
 
 #[contract]
 pub struct PaymentsContract;
@@ -39,6 +40,7 @@ enum DataKey {
     Treasury,
     FeeBps,
     NextIntentId,
+    Wallet,
     Initialized,
     Intent(u64),
     PinnedAdmin,
@@ -75,6 +77,7 @@ impl PaymentsContract {
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::NextIntentId, &1_u64);
+        env.storage().instance().set(&DataKey::Wallet, &wallet);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
 
@@ -124,6 +127,18 @@ impl PaymentsContract {
         require(&env, payer_agent != payee_agent, ProtocolError::InvalidInput);
 
         payer_agent.require_auth();
+
+        let wallet: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Wallet)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord));
+        let wallet_client = crate::WalletContractClient::new(&env, &wallet);
+        require(
+            &env,
+            wallet_client.has_active_binding(&payer_agent),
+            ProtocolError::WalletNotBound,
+        );
 
         let id: u64 = env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized();
 
