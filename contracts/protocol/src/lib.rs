@@ -2,7 +2,9 @@
 
 //! Global protocol configuration contract for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_valid_bps, ProtocolError};
+use lily_common::{
+    bump_instance, require, require_auth_or_error, require_valid_bps, ProtocolError,
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
 };
@@ -25,20 +27,33 @@ enum DataKey {
     Treasury,
     FeeBps,
     Initialized,
+    PinnedAdmin,
 }
 
 #[contractimpl]
 impl ProtocolContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize protocol-wide configuration once.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
 
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -75,7 +90,7 @@ impl ProtocolContract {
         require_valid_bps(&env, fee_bps);
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         bump_instance(&env);
@@ -87,7 +102,7 @@ impl ProtocolContract {
         ensure_initialized(&env);
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         bump_instance(&env);
@@ -99,7 +114,7 @@ impl ProtocolContract {
         ensure_initialized(&env);
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &new_admin);
         bump_instance(&env);
@@ -113,6 +128,11 @@ fn ensure_initialized(env: &Env) {
         env.storage().instance().has(&DataKey::Initialized),
         ProtocolError::NotInitialized,
     );
+}
+
+fn require_initial_admin(env: &Env, admin: &Address) {
+    let pinned: Address = env.storage().instance().get(&DataKey::PinnedAdmin).unwrap_optimized();
+    require(env, *admin == pinned, ProtocolError::Unauthorized);
 }
 
 fn get_admin(env: &Env) -> Address {

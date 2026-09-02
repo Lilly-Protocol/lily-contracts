@@ -19,6 +19,10 @@ on:
   schedule:
     - cron: "0 3 * * *" # nightly at 03:00 UTC
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -38,10 +42,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Check tooling (strict)
-        # Fails the build when a prerequisite (rustc, cargo, rustfmt,
-        # stellar, wasm32v1-none stdlib) is missing, instead of only
-        # printing versions.
+      - name: Show tool versions
         run: ./scripts/check-tooling.sh --strict
 
       - name: Format check
@@ -53,11 +54,11 @@ jobs:
       - name: Test
         run: make test
 
-      - name: Docs (rustdoc with warnings denied)
-        run: make docs
+      - name: Documentation check
+        run: make doc
 
       - name: Build Wasm artifacts
         run: make build-wasm
 
-      - name: Wasm size report
-        run: make size-report
+      - name: Check Wasm size limits
+        run: make check-wasm-sizes
