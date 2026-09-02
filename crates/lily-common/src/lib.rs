@@ -38,6 +38,7 @@ pub enum ProtocolError {
 }
 
 /// Shared payment status used by settlement-oriented contracts.
+#[non_exhaustive]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaymentStatus {
