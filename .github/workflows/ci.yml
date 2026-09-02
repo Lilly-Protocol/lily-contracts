@@ -67,8 +67,23 @@ jobs:
       - name: Documentation check
         run: make doc
 
-      - name: Build Wasm artifacts
-        run: make build-wasm
+      - name: Verify manifest (NIO-60)
+        run: make verify
+
+      - name: Build contract Wasm artifacts
+        run: make artifacts
+
+      - name: Prove contract-artifacts runtime bundle
+        run: ./scripts/prove-contract-artifacts-runtime.sh
 
       - name: Check Wasm size limits
         run: make check-wasm-sizes
+
+      - name: Upload contract artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-artifacts
+          path: |
+            dist/*.wasm
+            dist/manifest.json
+          if-no-files-found: error

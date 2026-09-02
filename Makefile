@@ -4,7 +4,7 @@ CONTRACT_PACKAGES := protocol identity wallet payments
 WASM_TARGET := wasm32v1-none
 ARTIFACTS_DIR := dist
 
-.PHONY: fmt fmt-check lint check test doc build build-wasm artifacts ci clean help
+.PHONY: fmt fmt-check lint check test doc build build-wasm check-wasm-sizes artifacts artifacts-smoke prove-contract-artifacts-runtime test-manifest verify ci clean help
 
 help:
 	@printf "%s\n" \
@@ -18,7 +18,9 @@ help:
 	"make build      - build the workspace" \
 	"make build-wasm - compile all contract packages to Wasm (with size regression gate)" \
 	"make wasm-size  - compile and check wasm sizes against the committed baseline" \
-	"make artifacts  - copy optimized Wasm artifacts into dist/" \
+	"make artifacts  - copy optimized Wasm artifacts into dist/ and generate manifest" \
+	"make test-manifest - run NIO-60 manifest acceptance checks (no Rust required)" \
+	"make verify      - run NIO-60 manifest verification (alias for test-manifest)" \
 	"make ci         - local CI bundle (fmt-check, lint, test, doc)" \
 	"make clean      - remove build outputs"
 
@@ -76,12 +78,27 @@ build-wasm:
 wasm-size: build-wasm
 	@echo "wasm size regression gate: PASS"
 
+check-wasm-sizes:
+	@sh scripts/check-wasm-sizes.sh
+
 artifacts: build-wasm
 	@mkdir -p $(ARTIFACTS_DIR)
 	@for pkg in $(CONTRACT_PACKAGES); do \
 		cp target/$(WASM_TARGET)/release/$$pkg.wasm $(ARTIFACTS_DIR)/$$pkg.wasm; \
 	done
 	@./scripts/generate-manifest.sh
+
+artifacts-smoke:
+	@./scripts/test-artifacts-smoke.sh
+
+prove-contract-artifacts-runtime:
+	@./scripts/prove-contract-artifacts-runtime.sh
+
+test-manifest:
+	@./scripts/check-nio-60-acceptance.sh
+
+verify:
+	@./scripts/verify.sh
 
 ci: fmt-check lint test doc
 

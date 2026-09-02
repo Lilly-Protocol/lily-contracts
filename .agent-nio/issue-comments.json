@@ -1,0 +1,46 @@
+{
+  "issue": {
+    "repo": "Lilly-Protocol/lily-contracts",
+    "number": 123,
+    "url": "https://github.com/Lilly-Protocol/lily-contracts/issues/123",
+    "title": "[Bounty: $55] Add a contract artifact manifest generator"
+  },
+  "analysis": {
+    "total": 1,
+    "attempt_count": 1,
+    "attempt_users": [
+      "ohsocoded"
+    ],
+    "settled_mentions": 0,
+    "maintainer_feedback_count": 0,
+    "missed_gap_mentions": 0,
+    "latest_attempt": {
+      "id": 5497342373,
+      "user": "ohsocoded",
+      "created_at": "2026-09-01T16:48:01Z",
+      "updated_at": "2026-09-01T16:48:01Z",
+      "body": "/bounty claim\n\nPR submitted: https://github.com/Lilly-Protocol/lily-contracts/pull/264\n\nAdded `scripts/generate-manifest.sh` to generate `dist/manifest.json` with sha256 checksums, package versions, git commit, and build profile, integrated into `make artifacts` and CI.\n\nPayout Wallet (Base USDC / ETH): `0x44a7a12C696E81761BaD83FCd34498F275745d86`",
+      "url": "https://github.com/Lilly-Protocol/lily-contracts/issues/123#issuecomment-5497342373",
+      "is_attempt": true,
+      "is_settled": false,
+      "is_maintainer_feedback": false,
+      "is_missed_gap": false
+    },
+    "latest_maintainer_feedback": null,
+    "latest_gap_hint": null
+  },
+  "comments": [
+    {
+      "id": 5497342373,
+      "user": "ohsocoded",
+      "created_at": "2026-09-01T16:48:01Z",
+      "updated_at": "2026-09-01T16:48:01Z",
+      "body": "/bounty claim\n\nPR submitted: https://github.com/Lilly-Protocol/lily-contracts/pull/264\n\nAdded `scripts/generate-manifest.sh` to generate `dist/manifest.json` with sha256 checksums, package versions, git commit, and build profile, integrated into `make artifacts` and CI.\n\nPayout Wallet (Base USDC / ETH): `0x44a7a12C696E81761BaD83FCd34498F275745d86`",
+      "url": "https://github.com/Lilly-Protocol/lily-contracts/issues/123#issuecomment-5497342373",
+      "is_attempt": true,
+      "is_settled": false,
+      "is_maintainer_feedback": false,
+      "is_missed_gap": false
+    }
+  ]
+}

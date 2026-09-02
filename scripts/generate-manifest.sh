@@ -22,7 +22,7 @@ mkdir -p "$ARTIFACTS_DIR"
 first=1
 artifacts_json=""
 
-for wasm_file in "$ARTIFACTS_DIR"/*.wasm; do
+for wasm_file in $(ls "$ARTIFACTS_DIR"/*.wasm 2>/dev/null | sort); do
   [ -e "$wasm_file" ] || continue
   filename="$(basename "$wasm_file")"
   pkg_name="${filename%.wasm}"

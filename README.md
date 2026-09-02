@@ -136,6 +136,9 @@ make test
 make build
 make build-wasm
 make artifacts
+make verify
+make test-manifest
+npm run test
 make ci
 
 The `make artifacts` target also generates `dist/manifest.json` with sha256 hashes, package versions, git commit, and build profile for each Wasm artifact.
