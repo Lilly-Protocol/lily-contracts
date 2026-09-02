@@ -135,6 +135,8 @@ make build
 make build-wasm
 make artifacts
 make ci
+
+The `make artifacts` target also generates `dist/manifest.json` with sha256 hashes, package versions, git commit, and build profile for each Wasm artifact.
 ```
 
 The lint target runs clippy with `--all-features` and the pedantic group enabled. A workspace allow-list suppresses stylistic lints that are not actionable for this codebase (`must_use_candidate`, `needless_pass_by_value`, `similar_names`, `missing_panics_doc`, `should_panic_without_expect`).
