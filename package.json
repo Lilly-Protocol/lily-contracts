@@ -1,6 +1,6 @@
 {
   "private": true,
-  "description": "Studio verify hook for NIO-60 manifest acceptance (lily-contracts#123)",
+  "description": "Manifest acceptance verify hook (no cargo required; complements upstream #264)",
   "scripts": {
     "test": "sh scripts/verify.sh"
   }

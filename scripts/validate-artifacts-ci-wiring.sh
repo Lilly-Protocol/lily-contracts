@@ -88,6 +88,16 @@ grep -q 'verify:' "$MAKEFILE" || {
   exit 1
 }
 
+grep -qE '\.agent-nio|agent-nio' "$REPO_ROOT/.gitignore" || {
+  echo "Error: .gitignore must exclude .agent-nio studio metadata." >&2
+  exit 1
+}
+
+if git -C "$REPO_ROOT" ls-files '.agent-nio' 2>/dev/null | grep -q .; then
+  echo "Error: .agent-nio must not be tracked in git." >&2
+  exit 1
+fi
+
 # Upload step must appear after runtime proof.
 ci_upload_line="$(grep -n 'Upload contract artifacts' "$CI_FILE" | head -1 | cut -d: -f1)"
 ci_prove_line="$(grep -n 'prove-contract-artifacts-runtime.sh' "$CI_FILE" | head -1 | cut -d: -f1)"
