@@ -129,6 +129,10 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
 
+## Compatibility policies
+
+- [Event compatibility policy](./docs/EVENT_COMPATIBILITY.md) — additive and versioned change rules for topics and payloads consumed by indexers
+
 ## Future protocol areas intentionally left for follow-up
 
 - On-chain agent reputation and credential attestations
