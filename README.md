@@ -137,6 +137,8 @@ make artifacts
 make ci
 ```
 
+The lint target runs clippy with `--all-features` and the pedantic group enabled. A workspace allow-list suppresses stylistic lints that are not actionable for this codebase (`must_use_candidate`, `needless_pass_by_value`, `similar_names`, `missing_panics_doc`, `should_panic_without_expect`).
+
 ## Contract development approach
 
 This repository intentionally ships a real, reviewable foundation without prematurely implementing every protocol feature. The current contracts establish:
