@@ -3,7 +3,10 @@
 //! Agent wallet binding and policy contract.
 
 use lily_common::{bump_instance, require, ProtocolError};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
+    Symbol,
+};
 
 #[contract]
 pub struct WalletContract;
@@ -100,6 +103,21 @@ impl WalletContract {
         env.events().publish((symbol_short!("state"), agent), binding);
     }
 
+    /// Admin emergency deactivation of a wallet binding.
+    pub fn admin_deactivate(env: Env, agent: Address) {
+        ensure_initialized(&env);
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        let mut binding = get_binding_internal(&env, &agent);
+        binding.enabled = false;
+        binding.revision += 1;
+
+        env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("adm_deact"), agent), binding);
+    }
+
     /// Read the current binding for an agent.
     pub fn get_binding(env: Env, agent: Address) -> WalletBinding {
         ensure_initialized(&env);
@@ -116,6 +134,10 @@ fn ensure_initialized(env: &Env) {
     );
 }
 
+fn get_admin(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+}
+
 fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {
     env.storage()
         .persistent()
@@ -124,3 +146,4 @@ fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {
 }
 
 mod test;
+
