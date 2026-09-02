@@ -64,6 +64,10 @@ Shared contract utilities, typed protocol errors, payment status enum, basis poi
 
 Reusable Soroban test helpers for local environments, synthetic addresses, and string conversion.
 
+## Documentation
+
+- [Authorization model](docs/AUTH.md) — function-by-function authorization matrix for every public contract function, with the reasoning behind each choice.
+
 ## Local requirements
 
 - Rust toolchain with `cargo` and `rustfmt`
@@ -104,6 +108,14 @@ You can inspect the local toolchain status with:
 ./scripts/check-tooling.sh
 ```
 
+Before deploying or invoking contracts, check that a Soroban RPC endpoint is responding:
+
+```bash
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org ./scripts/rpc-health.sh
+```
+
+The health probe calls both `getHealth` and `getLatestLedger` and exits non-zero on an HTTP, transport, or JSON-RPC failure.
+
 ## Common development commands
 
 ```bash
@@ -128,6 +140,10 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Event emission on state transitions
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
+
+## Compatibility policies
+
+- [Event compatibility policy](./docs/EVENT_COMPATIBILITY.md) — additive and versioned change rules for topics and payloads consumed by indexers
 
 ## Future protocol areas intentionally left for follow-up
 

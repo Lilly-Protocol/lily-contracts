@@ -1,7 +1,7 @@
-# Deliverable for issue #97
+# Deliverable for issue #30
 
-GH discussion — reward $40
+GH discussion — reward $25
 
 ## Code
 
-See `gh-disc-97-Lilly-Protocol-lily-contracts.ts`.
+See `gh-disc-30-Lilly-Protocol-lily-contracts.sol`.
