@@ -1,0 +1,21 @@
+{
+  "max_regression_percent": 15,
+  "baselines": {
+    "protocol": {
+      "baseline_bytes": 65536,
+      "max_limit_bytes": 131072
+    },
+    "identity": {
+      "baseline_bytes": 65536,
+      "max_limit_bytes": 131072
+    },
+    "wallet": {
+      "baseline_bytes": 65536,
+      "max_limit_bytes": 131072
+    },
+    "payments": {
+      "baseline_bytes": 65536,
+      "max_limit_bytes": 131072
+    }
+  }
+}
