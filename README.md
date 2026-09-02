@@ -52,6 +52,13 @@ Agent identity registry. Supports protocol bootstrapping, agent registration, co
 
 Wallet policy registry. Maintains agent-to-wallet bindings, settlement asset symbols, spend limits, and enabled state toggles.
 
+Binding lifecycle:
+- `bind_wallet` creates a brand-new binding and fails if the agent already has one.
+- `rebind_wallet` explicitly replaces an existing binding (enabled or disabled) with a new wallet, asset, and spend limit, resetting revision to 0.
+- `update_spend_limit` and `set_enabled` mutate the current binding without replacing it.
+
+This split prevents the silent state overwrites that would occur if `bind_wallet` were reused after a binding had been disabled.
+
 ### `contracts/payments`
 
 Payment intent and settlement primitive. Tracks payment intents, allows payer-side cancellation, and supports admin-driven settlement finalization.
@@ -63,6 +70,10 @@ Shared contract utilities, typed protocol errors, payment status enum, basis poi
 ### `crates/lily-test-support`
 
 Reusable Soroban test helpers for local environments, synthetic addresses, and string conversion.
+
+## Documentation
+
+- [Authorization model](docs/AUTH.md) — function-by-function authorization matrix for every public contract function, with the reasoning behind each choice.
 
 ## Local requirements
 
@@ -104,6 +115,14 @@ You can inspect the local toolchain status with:
 ./scripts/check-tooling.sh
 ```
 
+Before deploying or invoking contracts, check that a Soroban RPC endpoint is responding:
+
+```bash
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org ./scripts/rpc-health.sh
+```
+
+The health probe calls both `getHealth` and `getLatestLedger` and exits non-zero on an HTTP, transport, or JSON-RPC failure.
+
 ## Common development commands
 
 ```bash
@@ -125,9 +144,15 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Typed storage keys and typed return structs
 - Explicit initialization guards
 - Auth-gated admin and actor actions
-- Event emission on state transitions
+- Event emission on state transitions (see [docs/EVENTS.md](./docs/EVENTS.md))
+- Fee configuration in basis points with a documented treasury role (see [docs/FEES.md](./docs/FEES.md))
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
+- Documented storage layouts, TTL policy, and auth model (see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md))
+
+## Compatibility policies
+
+- [Event compatibility policy](./docs/EVENT_COMPATIBILITY.md) — additive and versioned change rules for topics and payloads consumed by indexers
 
 ## Future protocol areas intentionally left for follow-up
 
@@ -138,6 +163,11 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Upgrade and migration playbooks
 - Fuzzing, invariants, and deeper adversarial testing
 - Mainnet deployment manifests and release signing
+
+## Documentation
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — setup, conventions, and PR expectations.
+- [docs/ERRORS.md](./docs/ERRORS.md) — protocol error codes, raise sites, and triggering conditions.
 
 ## Contributing
 
