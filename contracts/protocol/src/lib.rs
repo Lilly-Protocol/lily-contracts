@@ -15,6 +15,7 @@ pub struct ProtocolContract;
 /// Protocol contract schema version.
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// Instance storage keys for protocol configuration and lifecycle state.
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
