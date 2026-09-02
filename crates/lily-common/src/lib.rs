@@ -21,6 +21,7 @@ pub const INSTANCE_BUMP_AMOUNT: u32 = 172_800;
 /// Numeric discriminants are part of the on-wire encoding; new variants are
 /// appended at the end so previously encoded values keep their identity.
 #[contracterror]
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[non_exhaustive]
 #[repr(u32)]
@@ -41,6 +42,7 @@ pub enum ProtocolError {
 /// Shared payment status used by settlement-oriented contracts.
 #[non_exhaustive]
 #[contracttype]
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum PaymentStatus {
