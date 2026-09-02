@@ -43,6 +43,23 @@ test:
 doc:
 	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
+test-locked:
+	cargo test --workspace --locked
+
+audit:
+	cargo audit
+
+docs:
+	cargo doc --workspace --no-deps
+
+size-report: build-wasm
+	@echo "=== Wasm Artifact Size Report ==="
+	@for pkg in $(CONTRACT_PACKAGES); do \
+		if [ -f target/$(WASM_TARGET)/release/$$pkg.wasm ]; then \
+			ls -lh target/$(WASM_TARGET)/release/$$pkg.wasm | awk '{print $$9, ":", $$5}'; \
+		fi \
+	done
+
 build:
 	cargo build --locked --workspace
 
