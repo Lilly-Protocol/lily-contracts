@@ -1,66 +1,66 @@
-#!/usr/bin/env sh
+#!/bin/sh
+# Wasm size regression gate (#125).
+#
+# Compares the release wasm size of each contract package against the
+# committed baseline (ci/wasm-size-baseline.json) and fails when a size
+# regresses beyond the committed tolerance (default 5%).
+#
+# Exit codes:
+#   0 - all sizes within budget
+#   1 - regression beyond tolerance, or a package is missing from the baseline
+#
+# Re-baselining after an intended growth:
+#   make build-wasm && sh scripts/record-wasm-size-baseline.sh
+
 set -eu
 
-# Compare compiled Wasm artifact sizes against the committed baseline.
-# Exits non-zero if any contract grows beyond the configured threshold.
-#
-# Usage:
-#   ./scripts/check-wasm-size.sh [baseline-file]
+BASELINE="${1:-ci/wasm-size-baseline.json}"
+WASM_DIR="${WASM_DIR:-target/wasm32v1-none/release}"
 
-BASELINE_FILE="${1:-.wasm-size-baseline.json}"
-TARGET_DIR="target/wasm32v1-none/release"
-CONTRACTS="protocol identity wallet payments"
-
-if [ ! -f "$BASELINE_FILE" ]; then
-  echo "Error: baseline file not found: $BASELINE_FILE" >&2
-  exit 1
+if [ ! -f "$BASELINE" ]; then
+    echo "wasm-size: FILL (missing baseline: $BASELINE)" >&2
+    exit 1
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "Error: jq is required to parse the baseline file." >&2
-  exit 1
+tolerance=$(sed -n 's/.*"regression_tolerance"[[:space:]]*:[[:space:]]*\([0-9.]*\).*/\1/p' "$BASELINE")
+if [ -z "$tolerance" ]; then
+    tolerance=0.05
 fi
 
-threshold_percent=$(jq -r '.threshold_percent // 5.0' "$BASELINE_FILE")
-threshold_bytes=$(jq -r '.threshold_bytes // 1024' "$BASELINE_FILE")
+# awk does the float math (POSIX, no bc dependency).
+check() {
+    pkg="$1"
+    file="$WASM_DIR/$1.wasm"
+    if [ ! -f "$file" ]; then
+        echo "wasm-size: MISSING $pkg ($file not found)" >&2
+        return 1
+    fi
+    actual=$(wc -c < "$file")
+    base=$(sed -n "s/.*\"$pkg\"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p" "$BASELINE")
+    if [ -z "$base" ]; then
+        echo "wasm-size: UNTRACKED $pkg ($actual B - add it to $BASELINE)" >&2
+        return 1
+    fi
+    verdict=$(awk -v a="$actual" -v b="$base" -v t="$tolerance" \
+        'BEGIN { if (b > 0 && a > b * (1 + t)) print "REGRESSION"; else print "OK" }')
+    if [ "$verdict" = "REGRESSION" ]; then
+        echo "wasm-size: FAIL $pkg  actual=$actual B  baseline=$base B  tolerance=${tolerance}" >&2
+        return 1
+    fi
+    echo "wasm-size: $pkg ${actual} B (baseline ${base} B, tolerance ${tolerance})"
+    return 0
+}
 
-failed=0
+echo "wasm-size: checking against $BASELINE (tolerance ${tolerance})"
 
-for contract in $CONTRACTS; do
-  wasm_path="$TARGET_DIR/$contract.wasm"
-  baseline=$(jq -r ".contracts.$contract // 0" "$BASELINE_FILE")
-
-  if [ "$baseline" -eq 0 ]; then
-    echo "Warning: no baseline for $contract; skipping." >&2
-    continue
-  fi
-
-  if [ ! -f "$wasm_path" ]; then
-    echo "Error: $wasm_path not found. Run 'make build-wasm' first." >&2
-    failed=1
-    continue
-  fi
-
-  size=$(wc -c < "$wasm_path" | tr -d ' ')
-  diff=$((size - baseline))
-  abs_diff=${diff#-}
-
-  # awk is used because sh lacks floating-point arithmetic.
-  percent=$(awk -v d="$abs_diff" -v b="$baseline" 'BEGIN { printf "%.2f", (d / b) * 100 }')
-  exceeds_percent=$(awk -v p="$percent" -v t="$threshold_percent" 'BEGIN { print (p > t) ? 1 : 0 }')
-  exceeds_bytes=$(awk -v d="$abs_diff" -v t="$threshold_bytes" 'BEGIN { print (d > t) ? 1 : 0 }')
-
-  if [ "$exceeds_percent" -eq 1 ] || [ "$exceeds_bytes" -eq 1 ]; then
-    echo "FAIL: $contract.wasm size regression detected (baseline=$baseline, current=$size, +$abs_diff bytes, +$percent%)." >&2
-    failed=1
-  else
-    echo "OK: $contract.wasm baseline=$baseline current=$size delta=$diff bytes ($percent%)."
-  fi
+status=0
+for pkg in protocol identity wallet payments; do
+    check "$pkg" || status=1
 done
 
-if [ "$failed" -ne 0 ]; then
-  echo "Wasm size regression check failed." >&2
-  exit 1
+if [ "$status" -eq 0 ]; then
+    echo "wasm-size: PASS"
+else
+    echo "wasm-size: FAIL (update the baseline intentionally or shrink the artifacts)" >&2
 fi
-
-echo "Wasm size regression check passed."
+exit "$status"
