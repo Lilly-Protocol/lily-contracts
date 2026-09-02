@@ -201,6 +201,14 @@ impl PaymentsContract {
         bump_instance(&env);
         get_intent_internal(&env, intent_id)
     }
+
+
+    /// Read an individual payment intent if it exists, returning `None` otherwise.
+    pub fn get_intent_opt(env: Env, intent_id: u64) -> Option<PaymentIntent> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().get(&DataKey::Intent(intent_id))
+    }
 }
 
 fn ensure_initialized(env: &Env) {

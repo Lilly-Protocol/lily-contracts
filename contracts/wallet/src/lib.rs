@@ -139,6 +139,14 @@ impl WalletContract {
         bump_instance(&env);
         get_binding_internal(&env, &agent)
     }
+
+
+    /// Read the current binding for an agent if one exists, returning `None` otherwise.
+    pub fn get_binding_opt(env: Env, agent: Address) -> Option<WalletBinding> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().get(&DataKey::Binding(agent))
+    }
 }
 
 fn ensure_initialized(env: &Env) {

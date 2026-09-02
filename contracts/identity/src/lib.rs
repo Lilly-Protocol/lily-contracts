@@ -141,6 +141,14 @@ impl IdentityContract {
         bump_instance(&env);
         get_profile_internal(&env, &agent)
     }
+
+
+    /// Fetch a registered profile if it exists, returning `None` for missing records.
+    pub fn get_profile_opt(env: Env, agent: Address) -> Option<AgentProfile> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().get(&DataKey::Profile(agent))
+    }
 }
 
 fn ensure_initialized(env: &Env) {
