@@ -1,8 +1,8 @@
 [package]
 name = "payments"
-description = "Soroban payment intent and settlement contract for Lily Protocol"
-keywords = ["stellar", "soroban", "payments", "settlement", "blockchain"]
-categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]
+description = "Soroban smart contract for Lily Protocol agent-to-agent payments and settlement"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,10 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
+
+description = "Lily Protocol payment intents with asynchronous creation, settlement and cancellation on Soroban."
+keywords.workspace = true
+categories.workspace = true
 publish = false
 
 [lib]
@@ -19,10 +23,13 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 lily-common = { workspace = true }
+wallet = { path = "../wallet" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+identity = { path = "../identity" }
+wallet = { path = "../wallet" }
 
 [lints]
 workspace = true

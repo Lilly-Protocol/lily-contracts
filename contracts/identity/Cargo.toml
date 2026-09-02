@@ -1,8 +1,8 @@
 [package]
 name = "identity"
-description = "Soroban agent identity registry for Lily Protocol"
-keywords = ["stellar", "soroban", "identity", "agents", "blockchain"]
-categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]
+description = "Soroban smart contract for Lily Protocol agent identity registration and management"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,10 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
+
+description = "Lily Protocol agent identity registry on Soroban: registration, profiles and controllers."
+keywords.workspace = true
+categories.workspace = true
 publish = false
 
 [lib]
@@ -23,6 +27,7 @@ lily-common = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+proptest = { workspace = true, features = ["attr-macro"] }
 
 [lints]
 workspace = true

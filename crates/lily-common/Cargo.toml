@@ -1,8 +1,8 @@
 [package]
 name = "lily-common"
-description = "Shared Soroban types and utilities for Lily Protocol contracts"
-keywords = ["stellar", "soroban", "smart-contracts", "blockchain", "no-std"]
-categories = ["cryptography::cryptocurrencies", "no-std", "wasm"]
+description = "Shared types, errors and helpers used across Lily Protocol Soroban contracts"
+keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,10 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
+
+description = "Shared no_std primitives for Lily Protocol Soroban contracts: typed errors, validation helpers and TTL bumps."
+keywords.workspace = true
+categories.workspace = true
 publish = false
 
 [lib]
@@ -18,5 +22,11 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
 [lints]
 workspace = true
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
