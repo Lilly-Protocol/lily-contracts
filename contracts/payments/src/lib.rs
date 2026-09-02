@@ -4,6 +4,7 @@
 
 use lily_common::{
     bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    MAX_BPS,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -12,6 +13,9 @@ use soroban_sdk::{
 
 #[contract]
 pub struct PaymentsContract;
+
+/// Largest payment amount that keeps future basis-point multiplication within i128.
+pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
 
 /// Maximum number of payment intents returned by one paginated query.
 pub const MAX_INTENTS_PAGE_SIZE: u32 = 100;
@@ -35,6 +39,9 @@ pub struct PaymentIntent {
     pub memo: String,
     pub settlement_reference: String,
     pub status: PaymentStatus,
+    /// Ledger timestamp (soroban time units, 30-second ledgers) captured at
+    /// intent creation. Used for audit ordering and dispute windows.
+    pub created_at: u64,
 }
 
 #[contracttype]
@@ -46,21 +53,34 @@ enum DataKey {
     NextIntentId,
     Initialized,
     Intent(u64),
+    PinnedAdmin,
     PayerIntents(Address),
 }
 
 #[contractimpl]
 impl PaymentsContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize settlement configuration once.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
 
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -93,7 +113,11 @@ impl PaymentsContract {
         memo: String,
     ) -> u64 {
         ensure_initialized(&env);
-        require(&env, amount > 0, ProtocolError::InvalidInput);
+        require(
+            &env,
+            amount > 0 && amount <= MAX_PAYMENT_AMOUNT,
+            ProtocolError::InvalidInput,
+        );
         require_non_empty(&env, memo.len());
 
         payer_agent.require_auth();
@@ -108,6 +132,7 @@ impl PaymentsContract {
             memo,
             settlement_reference: String::from_str(&env, ""),
             status: PaymentStatus::Pending,
+            created_at: env.ledger().timestamp(),
         };
 
         env.storage().persistent().set(&DataKey::Intent(id), &intent);
@@ -128,12 +153,21 @@ impl PaymentsContract {
     }
 
     /// Mark a payment intent as settled.
-    pub fn settle_intent(env: Env, intent_id: u64, settlement_reference: String) {
+    ///
+    /// `caller` is the principal authorized to settle. The typed role check
+    /// raises `ProtocolError::Unauthorized` when `caller` is not the stored
+    /// admin; a missing/invalid signature then surfaces as the host `Auth`
+    /// error from `require_auth` (see `CONTRIBUTING.md` for the mapping).
+    pub fn settle_intent(env: Env, caller: Address, intent_id: u64, settlement_reference: String) {
         ensure_initialized(&env);
         require_non_empty(&env, settlement_reference.len());
 
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_caller(&env, &caller, &admin);
+        require_auth_or_error(&caller, &env);
+
+        // Guard the status transition against reentrant settlement.
+        let _guard = NonReentrantGuard::acquire(&env, symbol_short!("settle"));
 
         let mut intent = get_intent_internal(&env, intent_id);
         require(
@@ -155,6 +189,8 @@ impl PaymentsContract {
 
         let mut intent = get_intent_internal(&env, intent_id);
         intent.payer_agent.require_auth();
+        // Guard the status transition against reentrant cancellation.
+        let _guard = NonReentrantGuard::acquire(&env, symbol_short!("cancel"));
         require(
             &env,
             intent.status == PaymentStatus::Pending,
@@ -214,6 +250,11 @@ fn ensure_initialized(env: &Env) {
         env.storage().instance().has(&DataKey::Initialized),
         ProtocolError::NotInitialized,
     );
+}
+
+fn require_initial_admin(env: &Env, admin: &Address) {
+    let pinned: Address = env.storage().instance().get(&DataKey::PinnedAdmin).unwrap_optimized();
+    require(env, *admin == pinned, ProtocolError::Unauthorized);
 }
 
 fn get_admin(env: &Env) -> Address {
