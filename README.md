@@ -164,6 +164,11 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Fuzzing, invariants, and deeper adversarial testing
 - Mainnet deployment manifests and release signing
 
+## Documentation
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — setup, conventions, and PR expectations.
+- [docs/ERRORS.md](./docs/ERRORS.md) — protocol error codes, raise sites, and triggering conditions.
+
 ## Contributing
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Contributors should keep changes scoped to a clear protocol concern and include tests for any state transition, auth path, or storage behavior they modify.
