@@ -1,0 +1,13 @@
+{
+  "network": "testnet",
+  "source_account": "alice",
+  "admin": "GADMIN...",
+  "treasury": "GTREASURY...",
+  "fee_bps": 100,
+  "contracts": {
+    "protocol": "CPROTOCOL...",
+    "payments": "CPAYMENTS...",
+    "identity": "CIDENTITY...",
+    "wallet": "CWALLET..."
+  }
+}
