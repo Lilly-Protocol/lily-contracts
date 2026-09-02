@@ -1,34 +1,27 @@
-# Lilly Contracts Tooling & Scripts
+# Utility Scripts
 
-Utility scripts for developing, inspecting, and deploying Lilly Protocol contracts.
+This directory contains utility scripts for development, continuous integration, and operations with Lily Protocol contracts.
 
-## Scripts Overview
-
-### `check-tooling.sh`
-Verifies that local compiler toolchains, Rust targets (`wasm32v1-none`), and Stellar CLI are properly installed.
-
-```sh
-./scripts/check-tooling.sh
-```
+## Available Scripts
 
 ### `rpc-health.sh`
-Probes Soroban RPC health and ledger status via JSON-RPC `getHealth` and `getLatestLedger`. Exits non-zero if the endpoint is unreachable or degraded.
+Probes a target Soroban RPC endpoint to verify node health and query the latest ledger sequence.
 
-```sh
-# Probe local testnet/quickstart RPC (default: http://localhost:8000/soroban/rpc)
+**Usage:**
+```bash
+# Using default testnet endpoint
 ./scripts/rpc-health.sh
 
-# Probe custom testnet RPC
-SOROBAN_RPC_URL="https://soroban-testnet.stellar.org" ./scripts/rpc-health.sh
+# Specifying a custom RPC endpoint via argument
+./scripts/rpc-health.sh https://soroban-testnet.stellar.org
+
+# Specifying via environment variable
+SOROBAN_RPC_URL="http://localhost:8000/soroban/rpc" ./scripts/rpc-health.sh
 ```
 
-### `deploy.sh`
-Automates deployment of all four contracts (`protocol`, `identity`, `wallet`, `payments`) in topological dependency order. Emits structured JSON deployment manifests and supports simulated dry-runs.
+**Exit codes:**
+- `0`: RPC endpoint is online, returns `healthy`, and successfully yields the latest ledger sequence.
+- `1`: Endpoint is unreachable, unhealthy, timed out, or returned an RPC error.
 
-```sh
-# Test deployment in dry-run mode
-./scripts/deploy.sh --dry-run
-
-# Deploy to testnet with custom source identity
-./scripts/deploy.sh --network=testnet --source=alice --output=deployed-contracts.json
-```
+### `check-tooling.sh`
+Verifies that all required build and test tooling (`cargo`, `stellar-cli`, `rustfmt`, `clippy`) is installed and matches project expectations.
