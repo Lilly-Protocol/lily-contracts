@@ -1,54 +1,79 @@
-# Testing contracts
+# Contract Testing
 
-Lily contract tests use helpers from `crates/lily-test-support`. The shared `test_env()` helper currently calls `env.mock_all_auths()`, which is convenient for happy-path and state-machine tests but must not be treated as proof that authorization rules are correct.
+This repository's shared `test_env()` helper calls `Env::mock_all_auths()`.
+That keeps behavior tests concise, but it also authorizes every
+`Address::require_auth()` invocation automatically. A test that uses
+`test_env()` therefore cannot prove that a contract rejects a missing or
+incorrect authorization.
 
-## Why `mock_all_auths()` needs care
+## Choosing an authorization setup
 
-`mock_all_auths()` makes every `Address::require_auth()` and `Address::require_auth_for_args()` invocation succeed. That keeps unrelated authorization setup out of ordinary behavior tests, but it also means an authorization regression can be hidden by the test environment.
+Use `test_env()` when authorization is not the behavior under test, including:
 
-For example, a test created with `test_env()` can still pass when it exercises an admin-only or payer-only path, because the environment supplies authorization automatically. A happy-path assertion therefore verifies the state transition, not the caller boundary.
+- storage and state-transition tests after a valid caller is assumed;
+- validation of amounts, statuses, and initialization rules;
+- event payload and query behavior; and
+- multi-step happy paths where repeating explicit auth trees would obscure the
+  protocol behavior being checked.
 
-Use blanket auth mocking when authorization is not the behavior under test, such as:
+Do not use `test_env()` for authorization boundaries. Tests for admin-only,
+controller-only, payer-only, or multi-party operations must start with
+`Env::default()` and opt in to only the authorization being exercised.
 
-- storage and state-transition behavior after a valid call;
-- input validation that is independent of caller identity;
-- event payloads and read-only queries;
-- multi-step happy paths where auth setup would obscure the behavior being tested.
+## Negative authorization tests
 
-Do not use blanket auth mocking as the only coverage for:
+The simplest missing-auth test uses an environment without auth mocking and
+asserts that the client call fails:
 
-- initialization guarded by an administrator;
-- admin-only configuration or settlement actions;
-- payer, owner, or account-specific mutations;
-- any change that adds, removes, or moves a `require_auth()` call.
+```rust
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
-## Writing authorization tests
+#[test]
+#[should_panic]
+fn rejects_missing_admin_auth() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
 
-Authorization-focused tests should start from `Env::default()` instead of `lily_test_support::test_env()`.
+    // No mock authorization is installed, so admin.require_auth() must fail.
+    client.initialize(&admin, &treasury, &100_u32);
+}
+```
 
-Use narrowly scoped authorization for any setup call that genuinely needs it. Soroban's `mock_auths()` can authorize the exact address and invocation required for setup; authorizations that are not listed do not pass. Then invoke the protected action without the required authorization and assert that the call fails.
+For a positive authorization-boundary test, prefer `Env::mock_auths()` with a
+specific `MockAuth` invocation tree. That proves the call succeeds with the
+expected signer without silently authorizing unrelated addresses or nested
+calls. Keep the mocked function name, arguments, and sub-invocations aligned
+with the contract call under test.
 
-A negative-auth test should make the boundary obvious:
+When an operation requires multiple actors, add separate cases for:
 
-1. Create a fresh `Env::default()`.
-2. Register the contract and construct its client.
-3. Authorize only the setup invocations required to reach the state being tested.
-4. Do **not** authorize the address required by the protected action.
-5. Call the protected action and assert an authorization failure (using the generated `try_*` client method when practical, or an expected panic when that better matches the existing test style).
-6. If state could have changed before the auth check, also assert that the failed call left storage unchanged.
+1. no authorization;
+2. each required authorization missing in turn;
+3. an unrelated address authorizing the call; and
+4. the complete expected authorization set.
 
-For positive authorization coverage, prefer `mock_auths()` with the expected address/invocation over `mock_all_auths()`. When a broader mock is unavoidable, inspect `env.auths()` after the call and assert that the expected authorization tree was actually requested. This prevents a missing `require_auth()` from silently turning a mocked test green.
+## Current coverage debt
 
-## Current test-suite debt
+The existing protocol, identity, wallet, and payments suites all construct
+their environment through `test_env()`. Their state and validation assertions
+remain useful, but their successful calls do not currently verify real auth
+boundaries.
 
-The current shared `test_env()` enables `mock_all_auths()` for every caller, so the existing suite is primarily behavior coverage rather than complete authorization coverage. This is known test debt, not an authorization guarantee.
+Close this gap incrementally:
 
-The migration plan is incremental:
+1. Add one missing-auth test for every public function that calls
+   `require_auth()`.
+2. Add wrong-signer tests for role-specific functions such as admin,
+   controller, agent, wallet, and payer operations.
+3. Add explicit positive `mock_auths()` tests for multi-party and nested
+   authorization trees.
+4. Keep broad `mock_all_auths()` behavior tests only where auth is outside the
+   test's stated purpose.
 
-- new or changed auth-sensitive entrypoints should include a negative-auth test;
-- prioritize admin, payment, wallet, ownership, and other value-moving mutations;
-- replace blanket mocks with `mock_auths()` in auth-focused tests;
-- where a test intentionally keeps `mock_all_auths()`, verify `env.auths()` when the presence of an auth check matters;
-- keep ordinary happy-path tests on `test_env()` when caller identity is not part of the assertion.
+New or changed authorization paths should include these focused negative tests
+in the same pull request. A passing all-mock suite alone is not evidence that an
+authorization boundary is enforced.
 
-The goal is not to remove `mock_all_auths()` from every test. The goal is to ensure that each authorization boundary has dedicated coverage that can fail when the corresponding `require_auth()` rule is removed or changed.
