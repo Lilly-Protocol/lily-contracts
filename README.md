@@ -64,6 +64,10 @@ Shared contract utilities, typed protocol errors, payment status enum, basis poi
 
 Reusable Soroban test helpers for local environments, synthetic addresses, and string conversion.
 
+## Documentation
+
+- [Authorization model](docs/AUTH.md) — function-by-function authorization matrix for every public contract function, with the reasoning behind each choice.
+
 ## Local requirements
 
 - Rust toolchain with `cargo` and `rustfmt`
@@ -128,6 +132,10 @@ This repository intentionally ships a real, reviewable foundation without premat
 - Event emission on state transitions
 - Conservative state transitions for settlement lifecycle
 - Clear separation between protocol domains
+
+## Compatibility policies
+
+- [Event compatibility policy](./docs/EVENT_COMPATIBILITY.md) — additive and versioned change rules for topics and payloads consumed by indexers
 
 ## Future protocol areas intentionally left for follow-up
 
