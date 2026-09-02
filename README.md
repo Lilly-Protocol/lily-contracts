@@ -161,6 +161,9 @@ This repository intentionally ships a real, reviewable foundation without premat
 See [Contract Testing](./docs/TESTING.md) for guidance on mock authorization,
 real-auth negative tests, and the current authorization coverage debt.
 
+For the signer requirements of every contract entry point and the reasoning
+behind each role boundary, see the [authorization model](./docs/AUTH.md).
+
 ## Future protocol areas intentionally left for follow-up
 
 - On-chain agent reputation and credential attestations
