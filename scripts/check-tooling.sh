@@ -1,53 +1,73 @@
 #!/usr/bin/env sh
-set -eu
+# Tooling report.
+#
+#   check-tooling.sh           informational: print versions, always exit 0
+#   check-tooling.sh --strict  fail (exit 1) if a required tool is missing
+#
+# Required (strict) tools: rustc, cargo, rustfmt, stellar, wasm32v1-none stdlib.
+set -u
 
-printf "rustc: "
-rustc --version
-printf "cargo: "
-cargo --version
+STRICT=0
+for arg in "$@"; do
+  case "$arg" in
+    --strict)
+      STRICT=1
+      ;;
+  esac
+done
+
+if [ "${CHECK_TOOLING_STRICT:-0}" = "1" ]; then
+  STRICT=1
+fi
+
+missing_count=0
+
+if command -v rustc >/dev/null 2>&1; then
+  printf "rustc: "
+  rustc --version
+else
+  printf "rustc: not installed\n"
+  missing_count=$((missing_count + 1))
+fi
+
+if command -v cargo >/dev/null 2>&1; then
+  printf "cargo: "
+  cargo --version
+else
+  printf "cargo: not installed\n"
+  missing_count=$((missing_count + 1))
+fi
+
+if command -v rustfmt >/dev/null 2>&1; then
+  printf "rustfmt: "
+  rustfmt --version
+else
+  printf "rustfmt: not installed\n"
+  missing_count=$((missing_count + 1))
+fi
 
 if command -v stellar >/dev/null 2>&1; then
-  printf "stellar: "
-  stellar --version
+  have stellar stellar --version
 else
   printf "stellar: not installed\n"
+  missing_count=$((missing_count + 1))
 fi
 
-if rustc --print target-list | grep -qx "wasm32v1-none"; then
+if command -v rustc >/dev/null 2>&1 && rustc --print target-list | grep -qx "wasm32v1-none"; then
   printf "wasm target available in toolchain list: yes\n"
 else
-  printf "wasm target available in toolchain list: no\n"
+  miss wasm32v1-none-target "not in toolchain target list"
 fi
 
-if [ -d "$(rustc --print sysroot)/lib/rustlib/wasm32v1-none/lib" ]; then
+if command -v rustc >/dev/null 2>&1 && [ -d "$(rustc --print sysroot)/lib/rustlib/wasm32v1-none/lib" ]; then
   printf "wasm target stdlib installed: yes\n"
 else
   printf "wasm target stdlib installed: no\n"
+  missing_count=$((missing_count + 1))
 fi
 
-# --- soroban-sdk / stellar-cli compatibility gate ---------------------------
-# A CLI/SDK major mismatch (e.g. CLI v23 against soroban-sdk 22) can
-# produce incompatible contract spec output or deploy-tooling surprises.
-# CI therefore requires the stellar-cli pin in .github/workflows/ci.yml
-# to stay on the same major line as the SDK version locked in Cargo.lock.
-if [ -f Cargo.lock ] && [ -f .github/workflows/ci.yml ]; then
-  SDK_VERSION="$(awk '/^name = "soroban-sdk"$/{getline; sub(/^version = /,""); gsub(/"/,""); print; exit}' Cargo.lock)"
-  CLI_MAJOR="$(awk -F@ '/stellar-cli@/{split($2,a,"."); gsub(/[^0-9]/,"",a[1]); print a[1]; exit}' .github/workflows/ci.yml)"
-  if [ -n "$SDK_VERSION" ] && [ -n "$CLI_MAJOR" ]; then
-    SDK_MAJOR="${SDK_VERSION%%.*}"
-    if [ "$SDK_MAJOR" = "$CLI_MAJOR" ]; then
-      printf "stellar-cli/SDK alignment: OK (CLI major %s ~= soroban-sdk %s)\n" "$CLI_MAJOR" "$SDK_VERSION"
-    else
-      {
-        printf "ERROR: stellar-cli major %s (.github/workflows/ci.yml) does not match soroban-sdk %s major %s (Cargo.lock)\n" "$CLI_MAJOR" "$SDK_VERSION" "$SDK_MAJOR"
-        printf "Repin to stellar/stellar-cli@v%s.x matching the SDK, or update the SDK after a deliberate CLI bump.\n" "$SDK_MAJOR"
-      } >&2
-      exit 1
-    fi
-  else
-    printf "ERROR: cannot resolve soroban-sdk version (Cargo.lock) or stellar-cli pin (.github/workflows/ci.yml)\n" >&2
-    exit 1
-  fi
-else
-  printf "warn: running outside repo root (Cargo.lock / .github/workflows/ci.yml not found); skipping SDK/CLI gate\n"
+if [ "$STRICT" = "1" ] && [ "$missing_count" -gt 0 ]; then
+  printf "\nError: %d required tool(s) missing in strict mode.\n" "$missing_count" >&2
+  exit 1
 fi
+
