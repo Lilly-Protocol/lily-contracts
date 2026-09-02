@@ -1,68 +1,73 @@
 #!/usr/bin/env sh
-set -eu
+# Tooling report.
+#
+#   check-tooling.sh           informational: print versions, always exit 0
+#   check-tooling.sh --strict  fail (exit 1) if a required tool is missing
+#
+# Required (strict) tools: rustc, cargo, rustfmt, stellar, wasm32v1-none stdlib.
+set -u
 
-strict=0
-if [ "${1:-}" = "--strict" ]; then
-  strict=1
+STRICT=0
+for arg in "$@"; do
+  case "$arg" in
+    --strict)
+      STRICT=1
+      ;;
+  esac
+done
+
+if [ "${CHECK_TOOLING_STRICT:-0}" = "1" ]; then
+  STRICT=1
 fi
 
-status=0
-
-ok() {
-  printf "%s\n" "$1"
-}
-
-missing() {
-  printf "%s\n" "$1"
-  status=1
-}
+missing_count=0
 
 if command -v rustc >/dev/null 2>&1; then
   printf "rustc: "
   rustc --version
 else
-  missing "rustc: not installed"
+  printf "rustc: not installed\n"
+  missing_count=$((missing_count + 1))
 fi
 
 if command -v cargo >/dev/null 2>&1; then
   printf "cargo: "
   cargo --version
 else
-  missing "cargo: not installed"
+  printf "cargo: not installed\n"
+  missing_count=$((missing_count + 1))
 fi
 
-if command -v rustfmt >/dev/null 2>&1 || cargo fmt --version >/dev/null 2>&1; then
+if command -v rustfmt >/dev/null 2>&1; then
   printf "rustfmt: "
-  if command -v rustfmt >/dev/null 2>&1; then
-    rustfmt --version
-  else
-    cargo fmt --version
-  fi
+  rustfmt --version
 else
-  missing "rustfmt: not installed"
+  printf "rustfmt: not installed\n"
+  missing_count=$((missing_count + 1))
 fi
 
 if command -v stellar >/dev/null 2>&1; then
-  printf "stellar: "
-  stellar --version
+  have stellar stellar --version
 else
-  missing "stellar: not installed"
+  printf "stellar: not installed\n"
+  missing_count=$((missing_count + 1))
 fi
 
-if rustc --print target-list 2>/dev/null | grep -qx "wasm32v1-none"; then
+if command -v rustc >/dev/null 2>&1 && rustc --print target-list | grep -qx "wasm32v1-none"; then
   printf "wasm target available in toolchain list: yes\n"
 else
-  missing "wasm target available in toolchain list: no"
+  miss wasm32v1-none-target "not in toolchain target list"
 fi
 
 if command -v rustc >/dev/null 2>&1 && [ -d "$(rustc --print sysroot)/lib/rustlib/wasm32v1-none/lib" ]; then
   printf "wasm target stdlib installed: yes\n"
 else
-  missing "wasm target stdlib installed: no"
+  printf "wasm target stdlib installed: no\n"
+  missing_count=$((missing_count + 1))
 fi
 
-if [ "$strict" -eq 1 ]; then
-  exit "$status"
+if [ "$STRICT" = "1" ] && [ "$missing_count" -gt 0 ]; then
+  printf "\nError: %d required tool(s) missing in strict mode.\n" "$missing_count" >&2
+  exit 1
 fi
 
-exit 0
