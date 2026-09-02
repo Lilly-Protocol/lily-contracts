@@ -7,11 +7,14 @@ use lily_common::{
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
-    String,
+    String, Vec,
 };
 
 #[contract]
 pub struct PaymentsContract;
+
+/// Maximum number of payment intents returned by one paginated query.
+pub const MAX_INTENTS_PAGE_SIZE: u32 = 100;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,6 +46,7 @@ enum DataKey {
     NextIntentId,
     Initialized,
     Intent(u64),
+    PayerIntents(Address),
 }
 
 #[contractimpl]
@@ -107,6 +111,16 @@ impl PaymentsContract {
         };
 
         env.storage().persistent().set(&DataKey::Intent(id), &intent);
+        let payer_index_key = DataKey::PayerIntents(intent.payer_agent.clone());
+        let mut payer_intent_ids: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&payer_index_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        payer_intent_ids.push_back(id);
+        env.storage()
+            .persistent()
+            .set(&payer_index_key, &payer_intent_ids);
         env.storage().instance().set(&DataKey::NextIntentId, &(id + 1));
         bump_instance(&env);
         env.events().publish((symbol_short!("create"), id), intent);
@@ -158,6 +172,39 @@ impl PaymentsContract {
         ensure_initialized(&env);
         bump_instance(&env);
         get_intent_internal(&env, intent_id)
+    }
+
+    /// Return a bounded page of a payer's intents in creation order.
+    pub fn list_intents(
+        env: Env,
+        payer_agent: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> Vec<PaymentIntent> {
+        ensure_initialized(&env);
+        require(
+            &env,
+            limit > 0 && limit <= MAX_INTENTS_PAGE_SIZE,
+            ProtocolError::InvalidInput,
+        );
+
+        let intent_ids: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PayerIntents(payer_agent))
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut intents = Vec::new(&env);
+        let end = core::cmp::min(cursor.saturating_add(limit), intent_ids.len());
+        let mut index = cursor;
+
+        while index < end {
+            let intent_id = intent_ids.get(index).unwrap_optimized();
+            intents.push_back(get_intent_internal(&env, intent_id));
+            index += 1;
+        }
+
+        bump_instance(&env);
+        intents
     }
 }
 
