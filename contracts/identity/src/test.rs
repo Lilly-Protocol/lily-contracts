@@ -40,6 +40,20 @@ fn returns_protocol_version() {
 }
 
 #[test]
+fn initializes_and_exposes_config() {
+    let env = test_env();
+    let admin = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let config = client.get_config();
+    assert_eq!(config, IdentityConfig { admin: admin.clone() });
+}
+
+#[test]
 fn registers_and_updates_profiles() {
     let env = test_env();
     let admin = test_address(&env);

@@ -23,6 +23,12 @@ pub struct AgentProfile {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdentityConfig {
+    pub admin: Address,
+}
+
+#[contracttype]
 #[derive(Clone)]
 enum DataKey {
     Admin,
@@ -57,7 +63,7 @@ impl IdentityContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
-        env.events().publish((symbol_short!("init"),), admin);
+        env.events().publish((symbol_short!("init"), admin.clone()), IdentityConfig { admin });
     }
 
     /// Return whether the contract has been initialized.

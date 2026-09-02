@@ -46,6 +46,14 @@ enum DataKey {
     PinnedAdmin,
 }
 
+fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
+    match status {
+        PaymentStatus::Pending => symbol_short!("pending"),
+        PaymentStatus::Settled => symbol_short!("settled"),
+        PaymentStatus::Cancelled => symbol_short!("cancelled"),
+    }
+}
+
 #[contractimpl]
 impl PaymentsContract {
     /// Capture the intended initial admin at deploy time.
@@ -81,7 +89,13 @@ impl PaymentsContract {
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
 
-        env.events().publish((symbol_short!("init"),), treasury);
+        let config = PaymentsConfig {
+            admin: admin.clone(),
+            treasury: treasury.clone(),
+            fee_bps,
+            next_intent_id: 1,
+        };
+        env.events().publish((symbol_short!("init"), admin), config);
     }
 
     /// Return whether the contract has been initialized.
@@ -183,12 +197,16 @@ impl PaymentsContract {
             intent.status == PaymentStatus::Pending,
             ProtocolError::PaymentAlreadyFinalized,
         );
+        let prior_status = intent.status;
         intent.status = PaymentStatus::Settled;
         intent.settlement_reference = settlement_reference;
 
         env.storage().persistent().set(&DataKey::Intent(intent_id), &intent);
         bump_instance(&env);
-        env.events().publish((symbol_short!("settle"), intent_id), intent);
+        env.events().publish(
+            (symbol_short!("settle"), intent_id, payment_status_symbol(prior_status)),
+            intent,
+        );
     }
 
     /// Cancel a payment intent before settlement.
@@ -205,10 +223,14 @@ impl PaymentsContract {
             ProtocolError::PaymentAlreadyFinalized,
         );
 
+        let prior_status = intent.status;
         intent.status = PaymentStatus::Cancelled;
         env.storage().persistent().set(&DataKey::Intent(intent_id), &intent);
         bump_instance(&env);
-        env.events().publish((symbol_short!("cancel"), intent_id), intent);
+        env.events().publish(
+            (symbol_short!("cancel"), intent_id, payment_status_symbol(prior_status)),
+            intent,
+        );
     }
 
 
