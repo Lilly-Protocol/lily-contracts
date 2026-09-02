@@ -2,7 +2,9 @@
 
 //! Agent identity registry for Lily Protocol.
 
-use lily_common::{bump_instance, require, require_non_empty, ProtocolError};
+use lily_common::{
+    bump_instance, require, require_auth_or_error, require_non_empty, ProtocolError,
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String,
@@ -26,11 +28,23 @@ enum DataKey {
     Admin,
     Initialized,
     Profile(Address),
+    PinnedAdmin,
 }
 
 #[contractimpl]
 impl IdentityContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize the registry admin.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
         admin.require_auth();
 
@@ -39,6 +53,7 @@ impl IdentityContract {
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_auth_or_error(&admin, &env);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -55,7 +70,7 @@ impl IdentityContract {
             ProtocolError::AlreadyExists,
         );
 
-        agent.require_auth();
+        require_auth_or_error(&agent, &env);
 
         let profile = AgentProfile { controller, metadata_uri, active: true, revision: 0 };
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
@@ -76,13 +91,13 @@ impl IdentityContract {
 
         let mut profile = get_profile_internal(&env, &agent);
         require(&env, profile.active, ProtocolError::InvalidInput);
-        profile.controller.require_auth();
+        require_auth_or_error(&profile.controller, &env);
 
         profile.metadata_uri = metadata_uri;
         if let Some(next_controller) = new_controller {
             profile.controller = next_controller;
         }
-        profile.revision += 1;
+        profile.revision = checked_inc(&env, profile.revision);
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
@@ -93,18 +108,34 @@ impl IdentityContract {
     pub fn deactivate(env: Env, agent: Address) {
         ensure_initialized(&env);
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         let mut profile = get_profile_internal(&env, &agent);
         profile.active = false;
-        profile.revision += 1;
+        profile.revision = checked_inc(&env, profile.revision);
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
         env.events().publish((symbol_short!("deact"), agent), profile);
     }
 
+    /// Re-enable a previously deactivated agent profile through admin action.
+    pub fn reactivate(env: Env, agent: Address) {
+        ensure_initialized(&env);
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        let mut profile = get_profile_internal(&env, &agent);
+        profile.active = true;
+        profile.revision += 1;
+
+        env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("react"), agent), profile);
+    }
+
     /// Fetch a registered profile.
+    #[must_use]
     pub fn get_profile(env: Env, agent: Address) -> AgentProfile {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -118,6 +149,11 @@ fn ensure_initialized(env: &Env) {
         env.storage().instance().has(&DataKey::Initialized),
         ProtocolError::NotInitialized,
     );
+}
+
+fn require_initial_admin(env: &Env, admin: &Address) {
+    let pinned: Address = env.storage().instance().get(&DataKey::PinnedAdmin).unwrap_optimized();
+    require(env, *admin == pinned, ProtocolError::Unauthorized);
 }
 
 fn get_admin(env: &Env) -> Address {
