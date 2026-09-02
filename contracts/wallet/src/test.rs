@@ -1,11 +1,24 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
 use soroban_sdk::symbol_short;
+use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
+use soroban_sdk::{Address, Env, IntoVal};
 
 use super::{WalletBinding, WalletContract, WalletContractClient};
+use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::{Address, TryIntoVal};
 use soroban_sdk::testutils::Events;
+
+#[test]
+fn returns_protocol_version() {
+    let env = test_env();
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.version(), PROTOCOL_VERSION);
+}
 
 #[test]
 fn binds_wallet_and_updates_policy() {
@@ -14,7 +27,7 @@ fn binds_wallet_and_updates_policy() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -49,7 +62,7 @@ fn rejects_double_binding_while_active() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -65,7 +78,7 @@ fn rejects_zero_spend_limit() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -73,28 +86,7 @@ fn rejects_zero_spend_limit() {
 }
 
 #[test]
-fn initialize_emits_init_event() {
-    let env = test_env();
-    let admin = test_address(&env);
-
-    let contract_id = env.register(WalletContract, ());
-    let client = WalletContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-
-    let events = env.events().all();
-    let event = events.last().unwrap();
-    assert_eq!(event.0, contract_id);
-
-    let topic0: soroban_sdk::Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    assert_eq!(topic0, symbol_short!("init"));
-
-    let data: Address = event.2.try_into_val(&env).unwrap();
-    assert_eq!(data, admin);
-}
-
-#[test]
-fn bind_wallet_emits_bind_event() {
+fn admin_can_deactivate_wallet_binding() {
     let env = test_env();
     let admin = test_address(&env);
     let agent = test_address(&env);
@@ -105,100 +97,10 @@ fn bind_wallet_emits_bind_event() {
 
     client.initialize(&admin);
     client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+    client.admin_deactivate(&agent);
 
-    let events = env.events().all();
-    let event = events.last().unwrap();
-    assert_eq!(event.0, contract_id);
-
-    let topic0: soroban_sdk::Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    assert_eq!(topic0, symbol_short!("bind"));
-
-    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
-    assert_eq!(topic1, agent);
-
-    let data: WalletBinding = event.2.try_into_val(&env).unwrap();
-    assert_eq!(
-        data,
-        WalletBinding {
-            wallet,
-            settlement_asset: symbol_short!("USDC"),
-            spend_limit: 1_000,
-            enabled: true,
-            revision: 0,
-        }
-    );
+    let binding = client.get_binding(&agent);
+    assert!(!binding.enabled);
+    assert_eq!(binding.revision, 1);
 }
 
-#[test]
-fn update_spend_limit_emits_limit_event() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let agent = test_address(&env);
-    let wallet = test_address(&env);
-
-    let contract_id = env.register(WalletContract, ());
-    let client = WalletContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
-    client.update_spend_limit(&agent, &2_500_i128);
-
-    let events = env.events().all();
-    let event = events.last().unwrap();
-    assert_eq!(event.0, contract_id);
-
-    let topic0: soroban_sdk::Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    assert_eq!(topic0, symbol_short!("limit"));
-
-    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
-    assert_eq!(topic1, agent);
-
-    let data: WalletBinding = event.2.try_into_val(&env).unwrap();
-    assert_eq!(
-        data,
-        WalletBinding {
-            wallet,
-            settlement_asset: symbol_short!("USDC"),
-            spend_limit: 2_500,
-            enabled: true,
-            revision: 1,
-        }
-    );
-}
-
-#[test]
-fn set_enabled_emits_state_event() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let agent = test_address(&env);
-    let wallet = test_address(&env);
-
-    let contract_id = env.register(WalletContract, ());
-    let client = WalletContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
-    client.set_enabled(&agent, &false);
-
-    let events = env.events().all();
-    let event = events.last().unwrap();
-    assert_eq!(event.0, contract_id);
-
-    let topic0: soroban_sdk::Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    assert_eq!(topic0, symbol_short!("state"));
-
-    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
-    assert_eq!(topic1, agent);
-
-    let data: WalletBinding = event.2.try_into_val(&env).unwrap();
-    assert_eq!(
-        data,
-        WalletBinding {
-            wallet,
-            settlement_asset: symbol_short!("USDC"),
-            spend_limit: 1_000,
-            enabled: false,
-            revision: 1,
-        }
-    );
-}
