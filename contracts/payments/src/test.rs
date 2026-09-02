@@ -3,7 +3,7 @@
 use lily_common::PaymentStatus;
 use lily_test_support::{soroban_string, test_address, test_env};
 
-use super::{PaymentIntent, PaymentsContract, PaymentsContractClient};
+use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
 #[test]
 fn creates_and_settles_payment_intents() {
@@ -62,6 +62,49 @@ fn payer_can_cancel_pending_intents() {
 
     let cancelled = client.get_intent(&id);
     assert_eq!(cancelled.status, PaymentStatus::Cancelled);
+}
+
+#[test]
+fn accepts_the_maximum_payment_amount() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &MAX_PAYMENT_AMOUNT,
+        &soroban_string(&env, "maximum payment"),
+    );
+
+    assert_eq!(client.get_intent(&id).amount, MAX_PAYMENT_AMOUNT);
+}
+
+#[test]
+#[should_panic]
+fn rejects_payment_amount_above_the_maximum() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.create_intent(
+        &payer,
+        &payee,
+        &(MAX_PAYMENT_AMOUNT + 1),
+        &soroban_string(&env, "too large"),
+    );
 }
 
 #[test]
