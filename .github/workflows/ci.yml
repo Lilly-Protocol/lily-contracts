@@ -31,10 +31,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-          targets: wasm32v1-none
+        uses: dtolnay/rust-toolchain@1.83
 
       - name: Install Stellar CLI
         # Pinned to the v22 line to match soroban-sdk 22 (Cargo.lock);
