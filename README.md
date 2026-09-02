@@ -52,6 +52,13 @@ Agent identity registry. Supports protocol bootstrapping, agent registration, co
 
 Wallet policy registry. Maintains agent-to-wallet bindings, settlement asset symbols, spend limits, and enabled state toggles.
 
+Binding lifecycle:
+- `bind_wallet` creates a brand-new binding and fails if the agent already has one.
+- `rebind_wallet` explicitly replaces an existing binding (enabled or disabled) with a new wallet, asset, and spend limit, resetting revision to 0.
+- `update_spend_limit` and `set_enabled` mutate the current binding without replacing it.
+
+This split prevents the silent state overwrites that would occur if `bind_wallet` were reused after a binding had been disabled.
+
 ### `contracts/payments`
 
 Payment intent and settlement primitive. Tracks payment intents, allows payer-side cancellation, and supports admin-driven settlement finalization.

@@ -65,6 +65,9 @@ impl WalletContract {
     }
 
     /// Bind an agent to a settlement wallet and policy envelope.
+    ///
+    /// Fails if the agent already has any binding (enabled or disabled).
+    /// Use `rebind_wallet` to explicitly replace an existing binding.
     pub fn bind_wallet(
         env: Env,
         agent: Address,
@@ -79,9 +82,11 @@ impl WalletContract {
         require_auth_or_error(&wallet, &env);
 
         let key = DataKey::Binding(agent.clone());
-        if let Some(existing) = env.storage().persistent().get::<_, WalletBinding>(&key) {
-            require(&env, !existing.enabled, ProtocolError::WalletAlreadyBound);
-        }
+        require(
+            &env,
+            !env.storage().persistent().has(&key),
+            ProtocolError::WalletAlreadyBound,
+        );
 
         let binding =
             WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
@@ -89,6 +94,39 @@ impl WalletContract {
         env.storage().persistent().set(&key, &binding);
         bump_instance(&env);
         env.events().publish((symbol_short!("bind"), agent), binding);
+    }
+
+    /// Explicitly replace an existing wallet binding.
+    ///
+    /// Requires the agent to already have a binding. The new binding starts at
+    /// revision 0 and is enabled. This removes the silent overwrite behavior
+    /// that `bind_wallet` previously performed on disabled bindings.
+    pub fn rebind_wallet(
+        env: Env,
+        agent: Address,
+        wallet: Address,
+        settlement_asset: Symbol,
+        spend_limit: i128,
+    ) {
+        ensure_initialized(&env);
+        require(&env, spend_limit > 0, ProtocolError::InvalidInput);
+
+        agent.require_auth();
+        wallet.require_auth();
+
+        let key = DataKey::Binding(agent.clone());
+        require(
+            &env,
+            env.storage().persistent().has(&key),
+            ProtocolError::MissingRecord,
+        );
+
+        let binding =
+            WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
+
+        env.storage().persistent().set(&key, &binding);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("rebind"), agent), binding);
     }
 
     /// Update the spend limit for an enabled binding.
