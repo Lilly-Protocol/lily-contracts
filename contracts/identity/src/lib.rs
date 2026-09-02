@@ -46,6 +46,8 @@ impl IdentityContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
@@ -95,7 +97,7 @@ impl IdentityContract {
         if let Some(next_controller) = new_controller {
             profile.controller = next_controller;
         }
-        profile.revision += 1;
+        profile.revision = checked_inc(&env, profile.revision);
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
@@ -110,7 +112,7 @@ impl IdentityContract {
 
         let mut profile = get_profile_internal(&env, &agent);
         profile.active = false;
-        profile.revision += 1;
+        profile.revision = checked_inc(&env, profile.revision);
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
@@ -133,6 +135,7 @@ impl IdentityContract {
     }
 
     /// Fetch a registered profile.
+    #[must_use]
     pub fn get_profile(env: Env, agent: Address) -> AgentProfile {
         ensure_initialized(&env);
         bump_instance(&env);

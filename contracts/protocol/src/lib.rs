@@ -24,6 +24,7 @@ pub struct ProtocolConfig {
 #[derive(Clone)]
 enum DataKey {
     Admin,
+    PendingAdmin,
     Treasury,
     FeeBps,
     Initialized,
@@ -45,6 +46,8 @@ impl ProtocolContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
+        admin.require_auth();
+
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
@@ -68,11 +71,13 @@ impl ProtocolContract {
     }
 
     /// Return whether the contract has been initialized.
+    #[must_use]
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
     }
 
     /// Fetch the current protocol configuration.
+    #[must_use]
     pub fn get_config(env: Env) -> ProtocolConfig {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -84,13 +89,18 @@ impl ProtocolContract {
         }
     }
 
+    /// Return the pending admin address if a transfer is in progress.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
     /// Update the protocol fee in basis points.
     pub fn set_fee_bps(env: Env, fee_bps: u32) {
         ensure_initialized(&env);
-        require_valid_bps(&env, fee_bps);
-
         let admin = get_admin(&env);
         require_auth_or_error(&admin, &env);
+
+        require_valid_bps(&env, fee_bps);
 
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         bump_instance(&env);
@@ -109,18 +119,43 @@ impl ProtocolContract {
         env.events().publish((symbol_short!("treasury"), admin), treasury);
     }
 
-    /// Transfer protocol admin authority.
+    /// Propose a new protocol admin (step 1 of two-step transfer).
     pub fn transfer_admin(env: Env, new_admin: Address) {
         ensure_initialized(&env);
 
         let admin = get_admin(&env);
         require_auth_or_error(&admin, &env);
 
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
         bump_instance(&env);
-        env.events().publish((symbol_short!("admin"), admin), new_admin);
+        env.events().publish((symbol_short!("propose"), admin), new_admin);
+    }
+
+    /// Accept protocol admin authority as the proposed pending admin (step 2 of two-step transfer).
+    pub fn accept_admin(env: Env) {
+        ensure_initialized(&env);
+
+        require(
+            &env,
+            env.storage().instance().has(&DataKey::PendingAdmin),
+            ProtocolError::MissingRecord,
+        );
+
+        let pending_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_optimized();
+        pending_admin.require_auth();
+
+        let old_admin = get_admin(&env);
+        env.storage().instance().set(&DataKey::Admin, &pending_admin);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("admin"), old_admin), pending_admin);
     }
 }
+
 
 fn ensure_initialized(env: &Env) {
     require(

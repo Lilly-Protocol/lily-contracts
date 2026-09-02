@@ -1,6 +1,7 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use lily_common::PaymentStatus;
+use lily_common::{PaymentStatus, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::testutils::Ledger;
 use soroban_sdk::unwrap::UnwrapOptimized;
@@ -16,6 +17,15 @@ fn bootstrap() -> (soroban_sdk::Env, soroban_sdk::Address, PaymentsContractClien
     let client = PaymentsContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury, &50_u32);
     (env, admin, client)
+}
+
+#[test]
+fn returns_protocol_version() {
+    let env = test_env();
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.version(), PROTOCOL_VERSION);
 }
 
 #[test]
@@ -85,7 +95,17 @@ fn payer_can_cancel_pending_intents() {
 
     client.initialize(&admin, &treasury, &50_u32);
     let id = client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, "cancel me"));
-    client.cancel_intent(&id);
+    client
+        .mock_auths(&[MockAuth {
+            address: &payer,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "cancel_intent",
+                args: (&id,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .cancel_intent(&id);
 
     let cancelled = client.get_intent(&id);
     assert_eq!(cancelled.status, PaymentStatus::Cancelled);

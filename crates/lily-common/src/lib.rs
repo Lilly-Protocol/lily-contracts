@@ -7,6 +7,9 @@ use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env, S
 /// Maximum basis points accepted by percentage-based configuration.
 pub const MAX_BPS: u32 = 10_000;
 
+/// Shared on-chain protocol interface version exposed by every contract.
+pub const PROTOCOL_VERSION: u32 = 1;
+
 /// TTL threshold used when refreshing instance storage.
 pub const INSTANCE_BUMP_THRESHOLD: u32 = 17_280;
 

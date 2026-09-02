@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
 use soroban_sdk::unwrap::UnwrapOptimized;
@@ -5,6 +6,38 @@ use soroban_sdk::Address;
 
 use super::{AgentProfile, DataKey, IdentityContract, IdentityContractClient};
 use lily_test_support::{soroban_string, test_address, test_env};
+use soroban_sdk::{FromVal, IntoVal, Symbol, Val, Vec};
+
+#[test]
+fn data_key_encodings_are_stable() {
+    let env = test_env();
+    let agent = test_address(&env);
+
+    let admin: Vec<Val> = soroban_sdk::vec![&env, Symbol::new(&env, "Admin").into_val(&env)];
+    let initialized: Vec<Val> =
+        soroban_sdk::vec![&env, Symbol::new(&env, "Initialized").into_val(&env)];
+    let profile: Vec<Val> = soroban_sdk::vec![
+        &env,
+        Symbol::new(&env, "Profile").into_val(&env),
+        agent.clone().into_val(&env),
+    ];
+
+    let actual_admin: Val = DataKey::Admin.into_val(&env);
+    let actual_initialized: Val = DataKey::Initialized.into_val(&env);
+    let actual_profile: Val = DataKey::Profile(agent).into_val(&env);
+    assert_eq!(Vec::<Val>::from_val(&env, &actual_admin), admin);
+    assert_eq!(Vec::<Val>::from_val(&env, &actual_initialized), initialized);
+    assert_eq!(Vec::<Val>::from_val(&env, &actual_profile), profile);
+}
+
+#[test]
+fn returns_protocol_version() {
+    let env = test_env();
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.version(), PROTOCOL_VERSION);
+}
 
 #[test]
 fn registers_and_updates_profiles() {

@@ -45,6 +45,8 @@ impl WalletContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
+
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
@@ -94,7 +96,7 @@ impl WalletContract {
         let mut binding = get_binding_internal(&env, &agent);
         require_enabled(&env, binding.enabled);
         binding.spend_limit = spend_limit;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
@@ -108,7 +110,7 @@ impl WalletContract {
 
         let mut binding = get_binding_internal(&env, &agent);
         binding.enabled = enabled;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
@@ -131,6 +133,7 @@ impl WalletContract {
     }
 
     /// Read the current binding for an agent.
+    #[must_use]
     pub fn get_binding(env: Env, agent: Address) -> WalletBinding {
         ensure_initialized(&env);
         bump_instance(&env);

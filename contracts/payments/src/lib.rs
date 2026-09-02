@@ -72,6 +72,8 @@ impl PaymentsContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
+        admin.require_auth();
+
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
@@ -93,6 +95,7 @@ impl PaymentsContract {
     }
 
     /// Return the active payments configuration.
+    #[must_use]
     pub fn get_config(env: Env) -> PaymentsConfig {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -105,6 +108,7 @@ impl PaymentsContract {
     }
 
     /// Create a payment intent that can be settled asynchronously.
+    #[must_use]
     pub fn create_intent(
         env: Env,
         payer_agent: Address,
@@ -119,6 +123,7 @@ impl PaymentsContract {
             ProtocolError::InvalidInput,
         );
         require_non_empty(&env, memo.len());
+        require(&env, payer_agent != payee_agent, ProtocolError::InvalidInput);
 
         payer_agent.require_auth();
 
@@ -146,7 +151,7 @@ impl PaymentsContract {
         env.storage()
             .persistent()
             .set(&payer_index_key, &payer_intent_ids);
-        env.storage().instance().set(&DataKey::NextIntentId, &(id + 1));
+        env.storage().instance().set(&DataKey::NextIntentId, &checked_inc(&env, id));
         bump_instance(&env);
         env.events().publish((symbol_short!("create"), id), intent);
         id
@@ -160,14 +165,14 @@ impl PaymentsContract {
     /// error from `require_auth` (see `CONTRIBUTING.md` for the mapping).
     pub fn settle_intent(env: Env, caller: Address, intent_id: u64, settlement_reference: String) {
         ensure_initialized(&env);
-        require_non_empty(&env, settlement_reference.len());
-
         let admin = get_admin(&env);
         require_caller(&env, &caller, &admin);
         require_auth_or_error(&caller, &env);
 
         // Guard the status transition against reentrant settlement.
         let _guard = NonReentrantGuard::acquire(&env, symbol_short!("settle"));
+
+        require_non_empty(&env, settlement_reference.len());
 
         let mut intent = get_intent_internal(&env, intent_id);
         require(
@@ -204,6 +209,7 @@ impl PaymentsContract {
     }
 
     /// Read an individual payment intent.
+    #[must_use]
     pub fn get_intent(env: Env, intent_id: u64) -> PaymentIntent {
         ensure_initialized(&env);
         bump_instance(&env);

@@ -15,7 +15,8 @@ help:
 	"make test       - run all unit and integration-style tests" \
 	"make doc        - generate documentation with warnings denied" \
 	"make build      - build the workspace" \
-	"make build-wasm - compile all contract packages to Wasm" \
+	"make build-wasm - compile all contract packages to Wasm (with size regression gate)" \
+	"make wasm-size  - compile and check wasm sizes against the committed baseline" \
 	"make artifacts  - copy optimized Wasm artifacts into dist/" \
 	"make ci         - local CI bundle (fmt-check, lint, test, doc)" \
 	"make clean      - remove build outputs"
@@ -49,6 +50,10 @@ build-wasm:
 	@for pkg in $(CONTRACT_PACKAGES); do \
 		cargo build --locked --target $(WASM_TARGET) --profile release --package $$pkg; \
 	done
+	@sh scripts/check-wasm-size.sh
+
+wasm-size: build-wasm
+	@echo "wasm size regression gate: PASS"
 
 artifacts: build-wasm
 	@mkdir -p $(ARTIFACTS_DIR)

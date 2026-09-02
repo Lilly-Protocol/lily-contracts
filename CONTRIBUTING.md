@@ -32,6 +32,9 @@ All cargo targets in the Makefile and CI workflows execute with the `--locked` f
 - Contract state keys should stay typed and local to each contract crate.
 - Initialization must be one-time and explicitly tested.
 - Admin actions must always require direct auth.
+- Perform authorization before validating caller-supplied input in initialization and
+  admin-gated functions. This prevents unauthenticated callers from probing validation
+  outcomes; state-existence checks needed to resolve the stored admin may run first.
 
 ## Initialization and deployer trust
 
