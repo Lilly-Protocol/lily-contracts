@@ -13,11 +13,15 @@ repository = "https://github.com/lily-protocol/lily-contracts"
 homepage = "https://lilyprotocol.com"
 authors = ["Lily Protocol Contributors"]
 rust-version = "1.83"
+# #98: shared publishing metadata inherited by every workspace crate.
+keywords = ["soroban", "stellar", "smart-contract", "lily-protocol"]
+categories = ["no-std", "external-ffi"]
 
 [workspace.dependencies]
 soroban-sdk = "22"
 lily-common = { path = "crates/lily-common" }
 lily-test-support = { path = "crates/lily-test-support" }
+proptest = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -27,6 +31,19 @@ expect_used = "warn"
 panic = "warn"
 todo = "warn"
 unwrap_used = "warn"
+# #124: pedantic group enabled workspace-wide with an explicit allow-list.
+pedantic = { level = "warn", priority = -1 }
+# Allow-list (documented exceptions):
+# - needless_pass_by_value: soroban contract fns conventionally take `env: Env`
+#   (not `&Env`); the SDK passes it by value into the host function bridge.
+needless_pass_by_value = "allow"
+# - similar_names: the payer/payee (and *_agent) pairs are deliberate domain
+#   naming; renaming one half would obscure the intent.
+similar_names = "allow"
+# - should_panic_without_expc: soroban contract panics carry error enums that
+#   surface as `Error(Contract, #n)`; coupling tests to that internal rendering
+#   is brittle, so bare `#[should_panic]` is preferred here.
+should_panic_without_expect = "allow"
 
 [profile.release]
 opt-level = "z"
