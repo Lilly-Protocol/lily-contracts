@@ -22,6 +22,7 @@ pub const INSTANCE_BUMP_AMOUNT: u32 = 172_800;
 /// appended at the end so previously encoded values keep their identity.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[non_exhaustive]
 #[repr(u32)]
 pub enum ProtocolError {
     AlreadyInitialized = 1,
@@ -41,6 +42,7 @@ pub enum ProtocolError {
 #[non_exhaustive]
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum PaymentStatus {
     Pending,
     Settled,
