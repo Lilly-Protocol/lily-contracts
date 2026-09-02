@@ -103,14 +103,13 @@ impl IdentityContract {
         env.events().publish((symbol_short!("deact"), agent), profile);
     }
 
-    /// Re-enable an inactive agent profile through admin action.
+    /// Re-enable a previously deactivated agent profile through admin action.
     pub fn reactivate(env: Env, agent: Address) {
         ensure_initialized(&env);
         let admin = get_admin(&env);
         admin.require_auth();
 
         let mut profile = get_profile_internal(&env, &agent);
-        require(&env, !profile.active, ProtocolError::InvalidInput);
         profile.active = true;
         profile.revision += 1;
 

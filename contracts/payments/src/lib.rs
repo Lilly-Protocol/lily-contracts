@@ -4,6 +4,7 @@
 
 use lily_common::{
     bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    MAX_BPS,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -12,6 +13,9 @@ use soroban_sdk::{
 
 #[contract]
 pub struct PaymentsContract;
+
+/// Largest payment amount that keeps future basis-point multiplication within i128.
+pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,7 +93,11 @@ impl PaymentsContract {
         memo: String,
     ) -> u64 {
         ensure_initialized(&env);
-        require(&env, amount > 0, ProtocolError::InvalidInput);
+        require(
+            &env,
+            amount > 0 && amount <= MAX_PAYMENT_AMOUNT,
+            ProtocolError::InvalidInput,
+        );
         require_non_empty(&env, memo.len());
 
         payer_agent.require_auth();
