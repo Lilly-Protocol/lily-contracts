@@ -4,23 +4,19 @@
 
 use lily_common::{
     bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
+    MAX_BPS,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String,
 };
+use wallet::WalletContractClient;
 
 #[contract]
 pub struct PaymentsContract;
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PaymentsConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
-    pub next_intent_id: u64,
-}
+/// Largest payment amount that keeps future basis-point multiplication within i128.
+pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,6 +28,9 @@ pub struct PaymentIntent {
     pub memo: String,
     pub settlement_reference: String,
     pub status: PaymentStatus,
+    /// Ledger timestamp (soroban time units, 30-second ledgers) captured at
+    /// intent creation. Used for audit ordering and dispute windows.
+    pub created_at: u64,
 }
 
 #[contracttype]
@@ -41,46 +40,98 @@ enum DataKey {
     Treasury,
     FeeBps,
     NextIntentId,
+    Wallet,
     Initialized,
     Intent(u64),
+    PinnedAdmin,
+}
+
+fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
+    match status {
+        PaymentStatus::Pending => symbol_short!("pending"),
+        PaymentStatus::Settled => symbol_short!("settled"),
+        PaymentStatus::Cancelled => symbol_short!("cancelled"),
+    }
+}
+
+fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
+    match status {
+        PaymentStatus::Pending => symbol_short!("pending"),
+        PaymentStatus::Settled => symbol_short!("settled"),
+        PaymentStatus::Cancelled => symbol_short!("cancelled"),
+    }
 }
 
 #[contractimpl]
 impl PaymentsContract {
+    /// Capture the intended initial admin at deploy time.
+    ///
+    /// `initialize` only accepts this exact address, so a front-runner cannot
+    /// claim a fresh deployment with their own admin.
+    pub fn __constructor(env: Env, initial_admin: Address) {
+        env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
     /// Initialize settlement configuration once.
+    ///
+    /// The initial admin must match the address pinned by the constructor at
+    /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
+        admin.require_auth();
+
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
 
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::NextIntentId, &1_u64);
+        env.storage().instance().set(&DataKey::Wallet, &wallet);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
 
-        env.events().publish((symbol_short!("init"),), treasury);
+        let config = PaymentsConfig {
+            admin: admin.clone(),
+            treasury: treasury.clone(),
+            fee_bps,
+            next_intent_id: 1,
+        };
+        env.events().publish((symbol_short!("init"), admin), config);
+    }
+
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
     }
 
     /// Return the active payments configuration.
+    #[must_use]
     pub fn get_config(env: Env) -> PaymentsConfig {
         ensure_initialized(&env);
         bump_instance(&env);
-        PaymentsConfig {
-            admin: get_admin(&env),
-            treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
-            fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
-            next_intent_id: env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized(),
+        ProtocolConfig {
+            admin: read_instance(&env, DataKey::Admin),
+            treasury: read_instance(&env, DataKey::Treasury),
+            fee_bps: read_instance(&env, DataKey::FeeBps),
         }
     }
 
+    /// Return the next intent id counter.
+    pub fn get_next_intent_id(env: Env) -> u64 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        read_instance(&env, DataKey::NextIntentId)
+    }
+
     /// Create a payment intent that can be settled asynchronously.
+    #[must_use]
     pub fn create_intent(
         env: Env,
         payer_agent: Address,
@@ -89,10 +140,27 @@ impl PaymentsContract {
         memo: String,
     ) -> u64 {
         ensure_initialized(&env);
-        require(&env, amount > 0, ProtocolError::InvalidInput);
+        require(
+            &env,
+            amount > 0 && amount <= MAX_PAYMENT_AMOUNT,
+            ProtocolError::InvalidInput,
+        );
         require_non_empty(&env, memo.len());
+        require(&env, payer_agent != payee_agent, ProtocolError::InvalidInput);
 
         payer_agent.require_auth();
+
+        let wallet: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Wallet)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord));
+        let wallet_client = crate::WalletContractClient::new(&env, &wallet);
+        require(
+            &env,
+            wallet_client.has_active_binding(&payer_agent),
+            ProtocolError::WalletNotBound,
+        );
 
         let id: u64 = env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized();
 
@@ -104,22 +172,32 @@ impl PaymentsContract {
             memo,
             settlement_reference: String::from_str(&env, ""),
             status: PaymentStatus::Pending,
+            created_at: env.ledger().timestamp(),
         };
 
         env.storage().persistent().set(&DataKey::Intent(id), &intent);
-        env.storage().instance().set(&DataKey::NextIntentId, &(id + 1));
+        env.storage().instance().set(&DataKey::NextIntentId, &checked_inc(&env, id));
         bump_instance(&env);
         env.events().publish((symbol_short!("create"), id), intent);
         id
     }
 
     /// Mark a payment intent as settled.
-    pub fn settle_intent(env: Env, intent_id: u64, settlement_reference: String) {
+    ///
+    /// `caller` is the principal authorized to settle. The typed role check
+    /// raises `ProtocolError::Unauthorized` when `caller` is not the stored
+    /// admin; a missing/invalid signature then surfaces as the host `Auth`
+    /// error from `require_auth` (see `CONTRIBUTING.md` for the mapping).
+    pub fn settle_intent(env: Env, caller: Address, intent_id: u64, settlement_reference: String) {
         ensure_initialized(&env);
-        require_non_empty(&env, settlement_reference.len());
-
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_caller(&env, &caller, &admin);
+        require_auth_or_error(&caller, &env);
+
+        // Guard the status transition against reentrant settlement.
+        let _guard = NonReentrantGuard::acquire(&env, symbol_short!("settle"));
+
+        require_non_empty(&env, settlement_reference.len());
 
         let mut intent = get_intent_internal(&env, intent_id);
         require(
@@ -127,12 +205,16 @@ impl PaymentsContract {
             intent.status == PaymentStatus::Pending,
             ProtocolError::PaymentAlreadyFinalized,
         );
+        let prior_status = intent.status;
         intent.status = PaymentStatus::Settled;
         intent.settlement_reference = settlement_reference;
 
         env.storage().persistent().set(&DataKey::Intent(intent_id), &intent);
         bump_instance(&env);
-        env.events().publish((symbol_short!("settle"), intent_id), intent);
+        env.events().publish(
+            (symbol_short!("settle"), intent_id, payment_status_symbol(prior_status)),
+            intent,
+        );
     }
 
     /// Cancel a payment intent before settlement.
@@ -141,23 +223,77 @@ impl PaymentsContract {
 
         let mut intent = get_intent_internal(&env, intent_id);
         intent.payer_agent.require_auth();
+        // Guard the status transition against reentrant cancellation.
+        let _guard = NonReentrantGuard::acquire(&env, symbol_short!("cancel"));
         require(
             &env,
             intent.status == PaymentStatus::Pending,
             ProtocolError::PaymentAlreadyFinalized,
         );
 
+        let prior_status = intent.status;
         intent.status = PaymentStatus::Cancelled;
         env.storage().persistent().set(&DataKey::Intent(intent_id), &intent);
         bump_instance(&env);
-        env.events().publish((symbol_short!("cancel"), intent_id), intent);
+        env.events().publish(
+            (symbol_short!("cancel"), intent_id, payment_status_symbol(prior_status)),
+            intent,
+        );
+    }
+
+
+
+    /// Update the fee charged on payment intents, in basis points.
+    pub fn set_fee_bps(env: Env, fee_bps: u32) {
+        ensure_initialized(&env);
+        require_valid_bps(&env, fee_bps);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("fee"), admin), fee_bps);
+    }
+
+    /// Update the treasury address used to collect fees.
+    pub fn set_treasury(env: Env, treasury: Address) {
+        ensure_initialized(&env);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Treasury, &treasury);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("treasury"), admin), treasury);
+    }
+
+    /// Transfer payments admin authority.
+    pub fn transfer_admin(env: Env, new_admin: Address) {
+        ensure_initialized(&env);
+
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("admin"), admin), new_admin);
     }
 
     /// Read an individual payment intent.
+    #[must_use]
     pub fn get_intent(env: Env, intent_id: u64) -> PaymentIntent {
         ensure_initialized(&env);
         bump_instance(&env);
         get_intent_internal(&env, intent_id)
+    }
+
+
+    /// Read an individual payment intent if it exists, returning `None` otherwise.
+    pub fn get_intent_opt(env: Env, intent_id: u64) -> Option<PaymentIntent> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().persistent().get(&DataKey::Intent(intent_id))
     }
 }
 
@@ -169,8 +305,13 @@ fn ensure_initialized(env: &Env) {
     );
 }
 
+fn require_initial_admin(env: &Env, admin: &Address) {
+    let pinned: Address = env.storage().instance().get(&DataKey::PinnedAdmin).unwrap_optimized();
+    require(env, *admin == pinned, ProtocolError::Unauthorized);
+}
+
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    read_instance(env, DataKey::Admin)
 }
 
 fn get_intent_internal(env: &Env, intent_id: u64) -> PaymentIntent {
