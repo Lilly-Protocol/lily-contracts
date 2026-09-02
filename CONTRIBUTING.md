@@ -45,6 +45,10 @@ Please include:
 - Test coverage summary
 - Follow-up work if the change intentionally leaves gaps
 
+## Event compatibility review gate
+
+Event topics and payloads are public interfaces. Any pull request that changes an event must follow [the event compatibility policy](./docs/EVENT_COMPATIBILITY.md), list the affected schemas, preserve existing topics, and include exact topic and payload assertions. Breaking event changes require a versioned event and a documented migration path.
+
 ## Security reporting
 
 Do not open public issues for exploitable vulnerabilities. Until a dedicated security channel is published, contact the Lily Protocol maintainers privately and include reproduction steps, impact, and affected contracts.
