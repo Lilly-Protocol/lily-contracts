@@ -90,6 +90,11 @@ impl PaymentsContract {
         env.events().publish((symbol_short!("init"),), treasury);
     }
 
+    /// Return whether the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Initialized)
+    }
+
     /// Return the active payments configuration.
     #[must_use]
     pub fn get_config(env: Env) -> PaymentsConfig {
