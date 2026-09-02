@@ -6,6 +6,22 @@ on:
     branches:
       - main
       - master
+  # Nightly run of the exact same check suite. The job installs the
+  # latest stable toolchain (dtolnay/rust-toolchain@stable), so this is
+  # also the guard against upstream regressions (rustc, clippy,
+  # soroban-sdk) that land between PRs.
+  #
+  # Failure behavior: a failed schedule run is reported as an annotation
+  # on this workflow; it does NOT block any PR (PRs are evaluated only
+  # by pull_request events). Triage: if a nightly failure is caused by
+  # an upstream change, either fix the code, or pin/bump the toolchain
+  # deliberately in a PR, then re-run.
+  schedule:
+    - cron: "0 3 * * *" # nightly at 03:00 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   checks:
@@ -21,13 +37,18 @@ jobs:
           targets: wasm32v1-none
 
       - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v23.0.1
+        # Pinned to the v22 line to match soroban-sdk 22 (Cargo.lock);
+        # v22.8.2 is the latest patch release of that line. A CLI/SDK
+        # major-version mismatch can produce incompatible contract spec
+        # output or deploy-tooling surprises, so scripts/check-tooling.sh
+        # fails CI loudly when the two drift apart (bounties #126 / #127).
+        uses: stellar/stellar-cli@v22.8.2
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Show tool versions
-        run: ./scripts/check-tooling.sh
+        run: ./scripts/check-tooling.sh --strict
 
       - name: Format check
         run: make fmt-check
@@ -38,5 +59,11 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Documentation check
+        run: make doc
+
       - name: Build Wasm artifacts
         run: make build-wasm
+
+      - name: Check Wasm size limits
+        run: make check-wasm-sizes

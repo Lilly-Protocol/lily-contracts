@@ -1,7 +1,7 @@
-# Deliverable for issue #29
+# Deliverable for issue #30
 
-GH mega-sweep — created 2026-08-25, 1 comments, labels: 
+GH discussion — reward $25
 
 ## Code
 
-See `github-29-Lilly-Protocol-lily-contracts.sol`.
+See `gh-disc-30-Lilly-Protocol-lily-contracts.sol`.
