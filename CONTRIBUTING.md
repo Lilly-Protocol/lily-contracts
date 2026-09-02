@@ -16,6 +16,10 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 3. Install the Wasm target with `rustup target add wasm32v1-none`.
 4. Run `make fmt`, `make lint`, and `make test` before opening a PR.
 
+### Deterministic builds and Cargo.lock
+
+All cargo targets in the Makefile and CI workflows execute with the `--locked` flag to ensure deterministic dependency resolution and detect lockfile drift. If you add or update dependencies in `Cargo.toml`, update `Cargo.lock` explicitly (e.g. via `cargo check`) and commit both files together. If `Cargo.lock` is out of sync with `Cargo.toml`, `--locked` builds will fail with `error: the lock file ... needs to be updated but --locked was passed to prevent this`.
+
 ## Repository conventions
 
 - `contracts/` contains deployable Soroban contracts.
@@ -45,9 +49,21 @@ Please include:
 - Test coverage summary
 - Follow-up work if the change intentionally leaves gaps
 
+## Event compatibility review gate
+
+Event topics and payloads are public interfaces. Any pull request that changes an event must follow [the event compatibility policy](./docs/EVENT_COMPATIBILITY.md), list the affected schemas, preserve existing topics, and include exact topic and payload assertions. Breaking event changes require a versioned event and a documented migration path.
+
 ## Security reporting
 
 Do not open public issues for exploitable vulnerabilities. Until a dedicated security channel is published, contact the Lily Protocol maintainers privately and include reproduction steps, impact, and affected contracts.
+
+## Continuous Integration and Scheduled Builds
+
+The repository executes automated CI on all pull requests and pushes to `main`/`master`. In addition, a scheduled nightly workflow runs at `02:00 UTC` against the latest toolchain to detect upstream toolchain drifts or compiler regressions early.
+
+If a scheduled nightly run fails:
+- The maintainers review the failure logs to identify whether an upstream dependency or toolchain update introduced a breaking change.
+- A tracking issue is opened to pin or adapt to the toolchain revision before it affects developer pull requests.
 
 ## Good first contributions
 

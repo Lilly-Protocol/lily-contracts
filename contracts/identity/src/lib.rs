@@ -103,6 +103,21 @@ impl IdentityContract {
         env.events().publish((symbol_short!("deact"), agent), profile);
     }
 
+    /// Re-enable a previously deactivated agent profile through admin action.
+    pub fn reactivate(env: Env, agent: Address) {
+        ensure_initialized(&env);
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        let mut profile = get_profile_internal(&env, &agent);
+        profile.active = true;
+        profile.revision += 1;
+
+        env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("react"), agent), profile);
+    }
+
     /// Fetch a registered profile.
     pub fn get_profile(env: Env, agent: Address) -> AgentProfile {
         ensure_initialized(&env);

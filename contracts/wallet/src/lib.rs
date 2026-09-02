@@ -3,7 +3,10 @@
 //! Agent wallet binding and policy contract.
 
 use lily_common::{bump_instance, require, ProtocolError};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, Symbol};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
+    Symbol,
+};
 
 #[contract]
 pub struct WalletContract;
@@ -100,20 +103,19 @@ impl WalletContract {
         env.events().publish((symbol_short!("state"), agent), binding);
     }
 
-    /// Release persistent binding storage for an agent.
-    pub fn unbind_wallet(env: Env, agent: Address) {
+    /// Admin emergency deactivation of a wallet binding.
+    pub fn admin_deactivate(env: Env, agent: Address) {
         ensure_initialized(&env);
-        agent.require_auth();
+        let admin = get_admin(&env);
+        admin.require_auth();
 
-        let key = DataKey::Binding(agent.clone());
-        let binding: WalletBinding =
-            env.storage().persistent().get(&key).unwrap_or_else(|| {
-                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
-            });
+        let mut binding = get_binding_internal(&env, &agent);
+        binding.enabled = false;
+        binding.revision += 1;
 
-        env.storage().persistent().remove(&key);
+        env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
-        env.events().publish((symbol_short!("unbind"), agent), binding);
+        env.events().publish((symbol_short!("adm_deact"), agent), binding);
     }
 
     /// Read the current binding for an agent.
@@ -132,6 +134,10 @@ fn ensure_initialized(env: &Env) {
     );
 }
 
+fn get_admin(env: &Env) -> Address {
+    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+}
+
 fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {
     env.storage()
         .persistent()
@@ -140,3 +146,4 @@ fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {
 }
 
 mod test;
+
