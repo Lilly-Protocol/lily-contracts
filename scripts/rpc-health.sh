@@ -1,41 +1,63 @@
 #!/usr/bin/env sh
 set -eu
 
-RPC_URL="${SOROBAN_RPC_URL:-http://localhost:8000/soroban/rpc}"
+SOROBAN_RPC_URL="${SOROBAN_RPC_URL:-${1:-https://soroban-testnet.stellar.org}}"
+TIMEOUT="${RPC_TIMEOUT:-10}"
 
-printf "Probing Soroban RPC endpoint at: %s\n" "$RPC_URL"
+printf "Probing Soroban RPC endpoint: %s\n" "$SOROBAN_RPC_URL"
 
 # 1. Probe getHealth
-HEALTH_RESP=$(curl -s -X POST -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' "$RPC_URL" 2>/dev/null || true)
+HEALTH_REQ='{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
+HEALTH_RESP="$(curl -s -f -m "$TIMEOUT" -X POST \
+  -H "Content-Type: application/json" \
+  -d "$HEALTH_REQ" \
+  "$SOROBAN_RPC_URL" 2>/dev/null || true)"
 
 if [ -z "$HEALTH_RESP" ]; then
-  printf "Error: Unable to connect to Soroban RPC endpoint at %s\n" "$RPC_URL" >&2
+  echo "Error: Failed to connect to Soroban RPC endpoint or request timed out." >&2
   exit 1
 fi
 
-if ! echo "$HEALTH_RESP" | grep -q '"status":"healthy"'; then
-  printf "Error: Soroban RPC health status is not healthy. Response: %s\n" "$HEALTH_RESP" >&2
+# Check if JSONRPC error occurred
+if echo "$HEALTH_RESP" | grep -q '"error"'; then
+  echo "Error: getHealth returned an RPC error:" >&2
+  echo "$HEALTH_RESP" >&2
   exit 1
 fi
 
-printf "✓ Soroban RPC health check passed (status: healthy)\n"
+# Check for health status
+if ! echo "$HEALTH_RESP" | grep -q '"status"[[:space:]]*:[[:space:]]*"healthy"'; then
+  echo "Error: Soroban RPC reported unhealthy status:" >&2
+  echo "$HEALTH_RESP" >&2
+  exit 1
+fi
 
 # 2. Probe getLatestLedger
-LEDGER_RESP=$(curl -s -X POST -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"getLatestLedger"}' "$RPC_URL" 2>/dev/null || true)
+LEDGER_REQ='{"jsonrpc":"2.0","id":2,"method":"getLatestLedger"}'
+LEDGER_RESP="$(curl -s -f -m "$TIMEOUT" -X POST \
+  -H "Content-Type: application/json" \
+  -d "$LEDGER_REQ" \
+  "$SOROBAN_RPC_URL" 2>/dev/null || true)"
 
 if [ -z "$LEDGER_RESP" ]; then
-  printf "Error: Failed to query latest ledger from %s\n" "$RPC_URL" >&2
+  echo "Error: getLatestLedger probe failed or timed out." >&2
+  exit 1
+fi
+
+if echo "$LEDGER_RESP" | grep -q '"error"'; then
+  echo "Error: getLatestLedger returned an RPC error:" >&2
+  echo "$LEDGER_RESP" >&2
   exit 1
 fi
 
 if ! echo "$LEDGER_RESP" | grep -q '"sequence"'; then
-  printf "Error: getLatestLedger response missing ledger sequence. Response: %s\n" "$LEDGER_RESP" >&2
+  echo "Error: getLatestLedger response missing sequence field." >&2
   exit 1
 fi
 
-LEDGER_SEQ=$(echo "$LEDGER_RESP" | grep -o '"sequence":[0-9]*' | cut -d: -f2 || true)
-printf "✓ Latest ledger confirmed (sequence: %s)\n" "$LEDGER_SEQ"
-printf "✓ Soroban RPC probe completed successfully.\n"
+LEDGER_SEQ="$(echo "$LEDGER_RESP" | sed -n 's/.*"sequence"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p')"
+
+printf "RPC Status: healthy\n"
+printf "Latest Ledger Sequence: %s\n" "$LEDGER_SEQ"
+printf "Health probe succeeded for %s\n" "$SOROBAN_RPC_URL"
 exit 0
