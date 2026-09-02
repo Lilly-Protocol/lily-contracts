@@ -99,6 +99,18 @@ fn rejects_reinitialization() {
 
 #[test]
 #[should_panic]
+fn get_config_before_initialize_panics_not_initialized() {
+    // ensure_initialized panics with ProtocolError::NotInitialized via panic_with_error
+    // when DataKey::Initialized is absent (lily_common::require -> panic_with_error!).
+    let env = test_env();
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    let _ = client.get_config();
+}
+
+#[test]
+#[should_panic]
 fn rejects_fee_bps_above_max() {
     let env = test_env();
     let admin = test_address(&env);
