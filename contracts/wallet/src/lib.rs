@@ -121,8 +121,13 @@ impl WalletContract {
             ProtocolError::MissingRecord,
         );
 
-        let binding =
-            WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
+        let binding = WalletBinding {
+            wallet,
+            settlement_asset,
+            spend_limit,
+            enabled: true,
+            revision: next_revision,
+        };
 
         env.storage().persistent().set(&key, &binding);
         bump_instance(&env);
