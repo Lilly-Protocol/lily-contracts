@@ -1,16 +1,16 @@
-name: Release Wasm Artifacts
+name: Release Wasm artifacts
 
 on:
   release:
-    types:
-      - published
+    types: [published]
 
 permissions:
   contents: write
 
 jobs:
-  publish-wasm:
+  release-wasm:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout release
         uses: actions/checkout@v4
@@ -22,9 +22,6 @@ jobs:
         with:
           targets: wasm32v1-none
 
-      - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v23.0.1
-
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -32,16 +29,25 @@ jobs:
         run: make artifacts
 
       - name: Record artifact provenance
+        shell: bash
         run: |
-          sha256sum dist/*.wasm > dist/SHA256SUMS
-          printf 'release=%s\ncommit=%s\n' \
-            '${{ github.event.release.tag_name }}' \
-            "$GITHUB_SHA" > dist/BUILD_INFO
+          set -euo pipefail
+          VERSION="$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)"
+          COMMIT="$(git rev-parse HEAD)"
+          printf 'version=%s\ntag=%s\ncommit=%s\nprofile=release\n' \
+            "$VERSION" "${{ github.event.release.tag_name }}" "$COMMIT" > dist/PROVENANCE.txt
+          (
+            cd dist
+            sha256sum *.wasm > SHA256SUMS
+          )
 
-      - name: Attach artifacts to release
+      - name: Attach Wasm artifacts to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload '${{ github.event.release.tag_name }}' \
-            dist/*.wasm dist/SHA256SUMS dist/BUILD_INFO \
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/*.wasm \
+            dist/SHA256SUMS \
+            dist/PROVENANCE.txt \
             --clobber
+          
