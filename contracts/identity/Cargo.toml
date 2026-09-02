@@ -24,6 +24,7 @@ lily-common = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+proptest = { workspace = true, features = ["attr-macro"] }
 
 [lints]
 workspace = true

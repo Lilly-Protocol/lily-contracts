@@ -21,6 +21,7 @@ categories = ["no-std", "external-ffi"]
 soroban-sdk = "22"
 lily-common = { path = "crates/lily-common" }
 lily-test-support = { path = "crates/lily-test-support" }
+proptest = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
