@@ -7,6 +7,10 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
+
+description = "Lily Protocol payment intents with asynchronous creation, settlement and cancellation on Soroban."
+keywords.workspace = true
+categories.workspace = true
 publish = false
 
 [lib]
@@ -20,6 +24,8 @@ lily-common = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+identity = { path = "../identity" }
+wallet = { path = "../wallet" }
 
 [lints]
 workspace = true
