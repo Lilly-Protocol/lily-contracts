@@ -83,7 +83,7 @@ impl ProtocolContract {
         bump_instance(&env);
 
         ProtocolConfig {
-            admin: get_admin(&env),
+            admin: get_admin_internal(&env),
             treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
             fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
         }
