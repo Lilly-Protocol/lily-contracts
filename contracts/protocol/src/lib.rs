@@ -13,14 +13,6 @@ use soroban_sdk::{
 pub struct ProtocolContract;
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProtocolConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
-}
-
-#[contracttype]
 #[derive(Clone)]
 enum DataKey {
     Admin,
@@ -81,7 +73,6 @@ impl ProtocolContract {
     pub fn get_config(env: Env) -> ProtocolConfig {
         ensure_initialized(&env);
         bump_instance(&env);
-
         ProtocolConfig {
             admin: get_admin_internal(&env),
             treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
@@ -171,7 +162,7 @@ fn require_initial_admin(env: &Env, admin: &Address) {
 }
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    read_instance(env, DataKey::Admin)
 }
 
 mod test;

@@ -47,6 +47,16 @@ pub enum PaymentStatus {
     Cancelled,
 }
 
+/// Shared protocol configuration fields used by both the protocol and payments
+/// contracts.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProtocolConfig {
+    pub admin: Address,
+    pub treasury: Address,
+    pub fee_bps: u32,
+}
+
 /// Panic with a typed contract error when a condition is not satisfied.
 pub fn require(env: &Env, condition: bool, error: ProtocolError) {
     if !condition {

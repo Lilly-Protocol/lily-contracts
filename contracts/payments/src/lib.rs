@@ -19,15 +19,6 @@ pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PaymentsConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
-    pub next_intent_id: u64,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PaymentIntent {
     pub id: u64,
     pub payer_agent: Address,
@@ -100,12 +91,18 @@ impl PaymentsContract {
     pub fn get_config(env: Env) -> PaymentsConfig {
         ensure_initialized(&env);
         bump_instance(&env);
-        PaymentsConfig {
-            admin: get_admin(&env),
-            treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
-            fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
-            next_intent_id: env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized(),
+        ProtocolConfig {
+            admin: read_instance(&env, DataKey::Admin),
+            treasury: read_instance(&env, DataKey::Treasury),
+            fee_bps: read_instance(&env, DataKey::FeeBps),
         }
+    }
+
+    /// Return the next intent id counter.
+    pub fn get_next_intent_id(env: Env) -> u64 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        read_instance(&env, DataKey::NextIntentId)
     }
 
     /// Create a payment intent that can be settled asynchronously.
@@ -269,7 +266,7 @@ fn require_initial_admin(env: &Env, admin: &Address) {
 }
 
 fn get_admin(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).unwrap_optimized()
+    read_instance(env, DataKey::Admin)
 }
 
 fn get_intent_internal(env: &Env, intent_id: u64) -> PaymentIntent {
