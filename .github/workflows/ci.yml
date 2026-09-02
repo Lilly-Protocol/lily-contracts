@@ -37,6 +37,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@1.83
 
+      # Pin stellar-cli to v22.8.2 to match soroban-sdk v22 (Protocol 22)
       - name: Install Stellar CLI
         # Pinned to the v22 line to match soroban-sdk 22 (Cargo.lock);
         # v22.8.2 is the latest patch release of that line. A CLI/SDK

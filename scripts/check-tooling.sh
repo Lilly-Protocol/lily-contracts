@@ -56,6 +56,15 @@ if [ -z "$SDK_MAJOR" ] && [ -f "$REPO_ROOT/Cargo.toml" ]; then
 fi
 SDK_MAJOR="${SDK_MAJOR:-22}"
 
+# Extract soroban-sdk major version from Cargo.toml or Cargo.lock
+SDK_MAJOR=""
+if [ -f "$REPO_ROOT/Cargo.toml" ]; then
+  SDK_MAJOR=$(grep -E "^[[:space:]]*soroban-sdk[[:space:]]*=" "$REPO_ROOT/Cargo.toml" | head -n 1 | grep -oE "[0-9]+" | head -n 1)
+fi
+if [ -z "$SDK_MAJOR" ] && [ -f "$REPO_ROOT/Cargo.lock" ]; then
+  SDK_MAJOR=$(grep -A 1 'name = "soroban-sdk"' "$REPO_ROOT/Cargo.lock" | grep "version =" | head -n 1 | grep -oE "[0-9]+" | head -n 1)
+fi
+
 if command -v stellar >/dev/null 2>&1; then
   have stellar stellar --version
 else
