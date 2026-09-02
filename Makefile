@@ -11,6 +11,7 @@ help:
 	"make fmt        - format the workspace" \
 	"make fmt-check  - verify formatting" \
 	"make lint       - run clippy with warnings denied" \
+	"make docs       - verify rustdoc builds with warnings denied" \
 	"make check      - cargo check across the workspace" \
 	"make test       - run all unit and integration-style tests" \
 	"make doc        - generate documentation with warnings denied" \
@@ -29,6 +30,9 @@ fmt-check:
 
 lint:
 	cargo clippy --locked --workspace --all-targets -- -D warnings
+
+docs:
+	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
 check:
 	cargo check --locked --workspace

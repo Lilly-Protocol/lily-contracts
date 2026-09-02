@@ -53,6 +53,9 @@ jobs:
       - name: Lint
         run: make lint
 
+      - name: Doc check
+        run: make docs
+
       - name: Test
         run: make test
 
