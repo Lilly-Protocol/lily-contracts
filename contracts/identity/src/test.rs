@@ -1,7 +1,20 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use super::{AgentProfile, IdentityContract, IdentityContractClient};
+use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::Address;
+
+use super::{AgentProfile, DataKey, IdentityContract, IdentityContractClient};
 use lily_test_support::{soroban_string, test_address, test_env};
+
+#[test]
+fn returns_protocol_version() {
+    let env = test_env();
+    let contract_id = env.register(IdentityContract, ());
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.version(), PROTOCOL_VERSION);
+}
 
 #[test]
 fn registers_and_updates_profiles() {
@@ -11,7 +24,7 @@ fn registers_and_updates_profiles() {
     let controller = test_address(&env);
     let new_controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -47,7 +60,7 @@ fn rejects_duplicate_registration() {
     let agent = test_address(&env);
     let controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -62,7 +75,7 @@ fn admin_can_deactivate_profiles() {
     let agent = test_address(&env);
     let controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
