@@ -1,6 +1,9 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
 use soroban_sdk::symbol_short;
+use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
+use soroban_sdk::{Address, Env, IntoVal};
 
 use super::{WalletBinding, WalletContract, WalletContractClient};
 use lily_test_support::{test_address, test_env};
@@ -12,7 +15,7 @@ fn binds_wallet_and_updates_policy() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -47,7 +50,7 @@ fn rejects_double_binding_while_active() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -63,7 +66,7 @@ fn rejects_zero_spend_limit() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
