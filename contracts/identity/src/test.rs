@@ -1,12 +1,18 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
+use soroban_sdk::testutils::Events;
 use soroban_sdk::unwrap::UnwrapOptimized;
 use soroban_sdk::Address;
 
 use super::{AgentProfile, DataKey, IdentityContract, IdentityContractClient};
 use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::{FromVal, IntoVal, Symbol, Val, Vec};
+
+fn event_has_topic(env: &soroban_sdk::Env, topics: &Vec<Val>, expected: &str) -> bool {
+    let expected: Val = Symbol::new(env, expected).into_val(env);
+    topics.iter().any(|topic| topic == expected)
+}
 
 #[test]
 fn data_key_encodings_are_stable() {
