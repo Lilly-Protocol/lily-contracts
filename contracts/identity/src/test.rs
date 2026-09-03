@@ -294,3 +294,16 @@ fn rejects_get_profile_on_unregistered_agent() {
     client.initialize(&admin);
     client.get_profile(&unknown_agent);
 }
+
+#[test]
+fn reports_initialization_status_and_extends_ttl() {
+    let env = test_env();
+    let admin = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&admin);
+    assert!(client.is_initialized());
+}

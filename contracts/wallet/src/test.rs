@@ -188,3 +188,16 @@ fn admin_can_deactivate_wallet_binding() {
     assert!(!binding.enabled);
     assert_eq!(binding.revision, 1);
 }
+
+#[test]
+fn reports_initialization_status_and_extends_ttl() {
+    let env = test_env();
+    let admin = test_address(&env);
+
+    let contract_id = env.register(WalletContract, (admin.clone(),));
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&admin);
+    assert!(client.is_initialized());
+}

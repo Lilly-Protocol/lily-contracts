@@ -196,3 +196,17 @@ fn rejects_set_fee_bps_above_max() {
     client.initialize(&admin, &treasury, &100_u32);
     client.set_fee_bps(&10_001_u32);
 }
+
+#[test]
+fn reports_initialization_status_and_extends_ttl() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&admin, &treasury, &250_u32);
+    assert!(client.is_initialized());
+}

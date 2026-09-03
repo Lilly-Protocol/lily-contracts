@@ -286,3 +286,17 @@ fn rejects_get_intent_on_missing_record() {
     client.initialize(&admin, &treasury, &50_u32);
     client.get_intent(&999_u64);
 }
+
+#[test]
+fn reports_initialization_status_and_extends_ttl() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&admin, &treasury, &50_u32);
+    assert!(client.is_initialized());
+}
