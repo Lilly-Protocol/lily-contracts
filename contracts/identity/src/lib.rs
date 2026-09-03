@@ -3,7 +3,7 @@
 //! Agent identity registry for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_auth_or_error, require_non_empty, ProtocolError,
+    bump_instance, checked_inc, require, require_auth_or_error, require_non_empty, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -63,7 +63,7 @@ impl IdentityContract {
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        require_auth_or_error(&admin, &env);
+        require_initial_admin(&env, &admin);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -71,6 +71,7 @@ impl IdentityContract {
     }
 
     /// Return whether the contract has been initialized.
+    #[must_use]
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
     }
@@ -184,6 +185,7 @@ impl IdentityContract {
     }
 
     /// Fetch a registered profile if it exists, returning `None` for missing records.
+    #[must_use]
     pub fn get_profile_opt(env: Env, agent: Address) -> Option<AgentProfile> {
         ensure_initialized(&env);
         bump_instance(&env);

@@ -3,17 +3,20 @@
 //! Payment intent and settlement primitives for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
-    MAX_BPS,
+    bump_instance, checked_inc, read_instance, require, require_auth_or_error, require_caller,
+    require_non_empty, require_valid_bps, NonReentrantGuard, PaymentStatus, ProtocolConfig,
+    ProtocolError, MAX_BPS,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     String, Vec,
 };
-use wallet::WalletContractClient;
 
 #[contract]
 pub struct PaymentsContract;
+
+/// Payments contract schema version.
+pub const SCHEMA_VERSION: u32 = 1;
 
 /// Largest payment amount that keeps future basis-point multiplication within i128.
 pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
@@ -63,14 +66,7 @@ fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
         PaymentStatus::Pending => symbol_short!("pending"),
         PaymentStatus::Settled => symbol_short!("settled"),
         PaymentStatus::Cancelled => symbol_short!("cancelled"),
-    }
-}
-
-fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
-    match status {
-        PaymentStatus::Pending => symbol_short!("pending"),
-        PaymentStatus::Settled => symbol_short!("settled"),
-        PaymentStatus::Cancelled => symbol_short!("cancelled"),
+        _ => symbol_short!("unknown"),
     }
 }
 
@@ -82,6 +78,12 @@ impl PaymentsContract {
     /// claim a fresh deployment with their own admin.
     pub fn __constructor(env: Env, initial_admin: Address) {
         env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
+    /// Return the protocol version.
+    #[must_use]
+    pub fn version(_env: Env) -> u32 {
+        lily_common::PROTOCOL_VERSION
     }
 
     /// Initialize settlement configuration once.
@@ -99,31 +101,25 @@ impl PaymentsContract {
         require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
 
-        require_auth_or_error(&admin, &env);
-
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
         env.storage().instance().set(&DataKey::NextIntentId, &1_u64);
-        env.storage().instance().set(&DataKey::Wallet, &wallet);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
 
-        let config = PaymentsConfig {
-            admin: admin.clone(),
-            treasury: treasury.clone(),
-            fee_bps,
-            next_intent_id: 1,
-        };
+        let config = ProtocolConfig { admin: admin.clone(), treasury: treasury.clone(), fee_bps };
         env.events().publish((symbol_short!("init"), admin), config);
     }
 
     /// Return whether the contract has been initialized.
+    #[must_use]
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
     }
 
     /// Return the contract schema version.
+    #[must_use]
     pub fn schema_version(env: Env) -> u32 {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -132,7 +128,7 @@ impl PaymentsContract {
 
     /// Return the active payments configuration.
     #[must_use]
-    pub fn get_config(env: Env) -> PaymentsConfig {
+    pub fn get_config(env: Env) -> ProtocolConfig {
         ensure_initialized(&env);
         bump_instance(&env);
         ProtocolConfig {
@@ -143,6 +139,7 @@ impl PaymentsContract {
     }
 
     /// Return the next intent id counter.
+    #[must_use]
     pub fn get_next_intent_id(env: Env) -> u64 {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -164,17 +161,6 @@ impl PaymentsContract {
         require(&env, payer_agent != payee_agent, ProtocolError::InvalidInput);
 
         payer_agent.require_auth();
-
-        let wallet: Address =
-            env.storage().instance().get(&DataKey::Wallet).unwrap_or_else(|| {
-                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
-            });
-        let wallet_client = crate::WalletContractClient::new(&env, &wallet);
-        require(
-            &env,
-            wallet_client.has_active_binding(&payer_agent),
-            ProtocolError::WalletNotBound,
-        );
 
         let id: u64 = env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized();
 
@@ -306,10 +292,36 @@ impl PaymentsContract {
     }
 
     /// Read an individual payment intent if it exists, returning `None` otherwise.
+    #[must_use]
     pub fn get_intent_opt(env: Env, intent_id: u64) -> Option<PaymentIntent> {
         ensure_initialized(&env);
         bump_instance(&env);
         env.storage().persistent().get(&DataKey::Intent(intent_id))
+    }
+
+    /// Return a paginated list of payment intents created by a specific payer.
+    #[must_use]
+    pub fn list_intents(env: Env, payer: Address, cursor: u32, limit: u32) -> Vec<PaymentIntent> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        require(&env, limit > 0 && limit <= MAX_INTENTS_PAGE_SIZE, ProtocolError::InvalidInput);
+
+        let payer_index_key = DataKey::PayerIntents(payer);
+        let payer_intent_ids: Vec<u64> =
+            env.storage().persistent().get(&payer_index_key).unwrap_or_else(|| Vec::new(&env));
+
+        let mut page = Vec::new(&env);
+        let total = payer_intent_ids.len();
+        if cursor >= total {
+            return page;
+        }
+
+        let end = core::cmp::min(cursor + limit, total);
+        for i in cursor..end {
+            let id = payer_intent_ids.get(i).unwrap_optimized();
+            page.push_back(get_intent_internal(&env, id));
+        }
+        page
     }
 }
 

@@ -5,14 +5,17 @@ use super::{ProtocolConfig, ProtocolContract, ProtocolContractClient};
 use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::{
+    symbol_short,
+    testutils::Events,
     xdr::{ScErrorCode, ScErrorType},
-    Error,
+    Address, Error, TryIntoVal,
 };
 
 #[test]
 fn returns_protocol_version() {
     let env = test_env();
-    let contract_id = env.register(ProtocolContract, ());
+    let admin = test_address(&env);
+    let contract_id = env.register(ProtocolContract, (admin,));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     assert_eq!(client.version(), PROTOCOL_VERSION);
@@ -43,7 +46,7 @@ fn initialize_emits_init_event() {
     let admin = test_address(&env);
     let treasury = test_address(&env);
 
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &250_u32);
@@ -70,7 +73,8 @@ fn initialize_emits_init_event() {
 #[should_panic]
 fn rejects_config_read_before_initialization() {
     let env = test_env();
-    let contract_id = env.register(ProtocolContract, ());
+    let admin = test_address(&env);
+    let contract_id = env.register(ProtocolContract, (admin,));
     let client = ProtocolContractClient::new(&env, &contract_id);
     client.get_config();
 }
@@ -95,7 +99,8 @@ fn get_config_before_initialize_panics_not_initialized() {
     // ensure_initialized panics with ProtocolError::NotInitialized via panic_with_error
     // when DataKey::Initialized is absent (lily_common::require -> panic_with_error!).
     let env = test_env();
-    let contract_id = env.register(ProtocolContract, ());
+    let admin = test_address(&env);
+    let contract_id = env.register(ProtocolContract, (admin,));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     let _ = client.get_config();
@@ -119,7 +124,7 @@ fn unauthenticated_invalid_initialization_fails_at_auth() {
     let env = soroban_sdk::Env::default();
     let admin = test_address(&env);
     let treasury = test_address(&env);
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     let result = client.try_initialize(&admin, &treasury, &10_001_u32);
@@ -134,7 +139,7 @@ fn unauthenticated_fee_update_fails_before_validation() {
     let env = test_env();
     let admin = test_address(&env);
     let treasury = test_address(&env);
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &100_u32);
@@ -173,11 +178,13 @@ fn transfers_admin_and_emits_event() {
     let treasury = test_address(&env);
     let next_admin = test_address(&env);
 
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &100_u32);
     client.transfer_admin(&next_admin);
+    assert_eq!(client.get_pending_admin(), Some(next_admin.clone()));
+    client.accept_admin();
 
     let config = client.get_config();
     assert_eq!(config.admin, next_admin);
@@ -190,9 +197,45 @@ fn rejects_set_fee_bps_above_max() {
     let admin = test_address(&env);
     let treasury = test_address(&env);
 
-    let contract_id = env.register(ProtocolContract, ());
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &100_u32);
     client.set_fee_bps(&10_001_u32);
+}
+
+#[test]
+fn rejects_initialize_with_non_pinned_admin() {
+    let env = test_env();
+    let pinned_admin = test_address(&env);
+    let non_pinned_admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (pinned_admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    let result = client.try_initialize(&non_pinned_admin, &treasury, &250_u32);
+    assert_eq!(
+        result,
+        Err(Ok(Error::from_contract_error(lily_common::ProtocolError::Unauthorized as u32)))
+    );
+    assert!(!client.is_initialized());
+
+    // Positive path: pinned admin initializes successfully
+    client.initialize(&pinned_admin, &treasury, &250_u32);
+    assert!(client.is_initialized());
+}
+
+#[test]
+#[should_panic = "Error(Contract, #3)"]
+fn rejects_initialize_with_non_pinned_admin_panics() {
+    let env = test_env();
+    let pinned_admin = test_address(&env);
+    let non_pinned_admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (pinned_admin,));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&non_pinned_admin, &treasury, &250_u32);
 }

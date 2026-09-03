@@ -61,6 +61,7 @@ fn agent_lifecycle_register_bind_create_settle() {
             memo: soroban_string(&env, "agent-to-payee service fee"),
             settlement_reference: soroban_string(&env, ""),
             status: PaymentStatus::Pending,
+            created_at: intent.created_at,
         }
     );
     assert!(identity.get_profile(&agent).active);
@@ -68,7 +69,7 @@ fn agent_lifecycle_register_bind_create_settle() {
     assert!(wallet_client.get_binding(&agent).enabled);
 
     // 4. Settlement flips only the intent; upstream contracts are untouched.
-    payments.settle_intent(&intent_id, &soroban_string(&env, "tx-lifecycle-0001"));
+    payments.settle_intent(&admin, &intent_id, &soroban_string(&env, "tx-lifecycle-0001"));
     let settled = payments.get_intent(&intent_id);
     assert_eq!(settled.status, PaymentStatus::Settled);
     assert_eq!(settled.settlement_reference, soroban_string(&env, "tx-lifecycle-0001"));
