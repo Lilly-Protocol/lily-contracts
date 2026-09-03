@@ -1,42 +1,52 @@
 # Contract Event Schema
 
-This document lists every event emitted by the Lily Protocol contracts, grouped by contract. Events follow Soroban conventions: each entry has a topic tuple (starting with a short symbol) and a typed payload. The topic is designed for efficient filtering; the payload carries the full post-transition state.
+This document lists every event emitted by the Lily Protocol contracts, grouped by contract. Events follow Soroban conventions: each entry has a topic tuple (starting with a short symbol) and a typed payload. The tables below mirror the current `env.events().publish(...)` call sites so indexers can rely on the documented topic arity and payload shape.
 
 ## `contracts/identity`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
-| `("init",)` | `Address` | `initialize(env, admin)` | The registry admin address. |
+| `("init", admin)` | `IdentityConfig` | `initialize(env, admin)` | `admin: Address` |
 | `("register", agent)` | `AgentProfile` | `register(env, agent, controller, metadata_uri)` | `controller: Address`, `metadata_uri: String`, `active: bool`, `revision: u64` |
-| `("update", agent)` | `AgentProfile` | `update_profile(env, agent, metadata_uri, new_controller)` | Updated profile after metadata and/or controller change. |
-| `("deact", agent)` | `AgentProfile` | `deactivate(env, agent)` | Profile after `active` has been set to `false`. |
+| `("metadata_updated", agent)` | `String` | `update_profile(env, agent, metadata_uri, new_controller)` | The updated metadata URI. Emitted only when metadata actually changes. |
+| `("controller_rotated", agent)` | `Address` | `update_profile(env, agent, metadata_uri, new_controller)` | The updated controller address. Emitted only when the controller actually changes. |
+| `("deact", agent)` | `AgentProfile` | `deactivate(env, agent)` | Profile after `active` is set to `false`. Repeated deactivation of an already-inactive profile emits nothing. |
+| `("react", agent)` | `AgentProfile` | `reactivate(env, agent)` | Profile after `active` is set to `true`. |
 
 ## `contracts/protocol`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
 | `("init", admin)` | `ProtocolConfig` | `initialize(env, admin, treasury, fee_bps)` | `admin: Address`, `treasury: Address`, `fee_bps: u32` |
 | `("fee", admin)` | `u32` | `set_fee_bps(env, fee_bps)` | The new fee value in basis points. |
 | `("treasury", admin)` | `Address` | `set_treasury(env, treasury)` | The new treasury address. |
-| `("admin", admin)` | `Address` | `transfer_admin(env, new_admin)` | The new admin address. |
+| `("propose", admin)` | `Address` | `transfer_admin(env, new_admin)` | The proposed pending-admin address. The topic admin is the current admin that initiated the handover. |
+| `("admin", old_admin)` | `Address` | `accept_admin(env)` | The accepted new admin address. The topic records the admin being replaced. |
 
 ## `contracts/payments`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
-| `("init",)` | `Address` | `initialize(env, admin, treasury, fee_bps)` | The configured treasury address. |
-| `("create", id)` | `PaymentIntent` | `create_intent(...)` | `id: u64`, `payer_agent: Address`, `payee_agent: Address`, `amount: i128`, `memo: String`, `settlement_reference: String`, `status: PaymentStatus` |
-| `("settle", id)` | `PaymentIntent` | `settle_intent(env, intent_id, settlement_reference)` | Intent after `status` is set to `Settled` and the settlement reference is recorded. |
-| `("cancel", id)` | `PaymentIntent` | `cancel_intent(env, intent_id)` | Intent after `status` is set to `Cancelled`. |
+| `("init", admin)` | `PaymentsConfig` | `initialize(env, admin, treasury, fee_bps)` | Snapshot constructed with `admin: Address`, `treasury: Address`, `fee_bps: u32`, `next_intent_id: u64`. |
+| `("create", id)` | `PaymentIntent` | `create_intent(env, payer_agent, payee_agent, amount, memo)` | `id: u64`, `payer_agent: Address`, `payee_agent: Address`, `amount: i128`, `memo: String`, `settlement_reference: String`, `status: PaymentStatus`, `created_at: u64` |
+| `("settle", id, prior_status)` | `PaymentIntent` | `settle_intent(env, caller, intent_id, settlement_reference)` | Intent after `status` becomes `Settled` and the settlement reference is recorded. `prior_status` is produced by `payment_status_symbol`; successful settlement currently transitions from `pending`. |
+| `("cancel", id, prior_status)` | `PaymentIntent` | `cancel_intent(env, intent_id)` | Intent after `status` becomes `Cancelled`. `prior_status` is produced by `payment_status_symbol`; successful cancellation currently transitions from `pending`. |
+| `("fee", admin)` | `u32` | `set_fee_bps(env, fee_bps)` | The new fee value in basis points. |
+| `("treasury", admin)` | `Address` | `set_treasury(env, treasury)` | The new treasury address. |
+| `("admin", admin)` | `Address` | `transfer_admin(env, new_admin)` | The new payments admin address. The topic records the previous admin. |
+
+The third topic element on successful `settle` and `cancel` events is the pre-transition status symbol. The current mapping is `Pending -> "pending"`, `Settled -> "settled"`, and `Cancelled -> "cancelled"`. Because finalization rejects non-pending intents, successful finalization events currently carry `"pending"` there.
 
 ## `contracts/wallet`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
 | `("init",)` | `Address` | `initialize(env, admin)` | The wallet registry admin address. |
 | `("bind", agent)` | `WalletBinding` | `bind_wallet(env, agent, wallet, settlement_asset, spend_limit)` | `wallet: Address`, `settlement_asset: Symbol`, `spend_limit: i128`, `enabled: bool`, `revision: u64` |
+| `("rebind", agent)` | `WalletBinding` | `rebind_wallet(env, agent, wallet, settlement_asset, spend_limit)` | The replacement binding written for an already-bound agent. |
 | `("limit", agent)` | `WalletBinding` | `update_spend_limit(env, agent, spend_limit)` | Binding after the spend limit is updated and `revision` is incremented. |
-| `("state", agent)` | `WalletBinding` | `set_enabled(env, agent, enabled)` | Binding after `enabled` is toggled and `revision` is incremented. |
+| `("state", agent)` | `WalletBinding` | `set_enabled(env, agent, enabled)` | Binding after `enabled` is changed and `revision` is incremented. |
+| `("adm_deact", agent)` | `WalletBinding` | `admin_deactivate(env, agent)` | Binding after an admin emergency-deactivation sets `enabled` to `false`. |
 
 ## Common payload types
 
@@ -48,7 +58,17 @@ pub enum PaymentStatus {
     Cancelled,
 }
 
+pub struct ProtocolConfig {
+    pub admin: Address,
+    pub treasury: Address,
+    pub fee_bps: u32,
+}
+
 // contracts/identity/src/lib.rs
+pub struct IdentityConfig {
+    pub admin: Address,
+}
+
 pub struct AgentProfile {
     pub controller: Address,
     pub metadata_uri: String,
@@ -56,14 +76,13 @@ pub struct AgentProfile {
     pub revision: u64,
 }
 
-// contracts/protocol/src/lib.rs
-pub struct ProtocolConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
-}
-
 // contracts/payments/src/lib.rs
+// initialize currently constructs its PaymentsConfig event snapshot with:
+// admin: Address
+// treasury: Address
+// fee_bps: u32
+// next_intent_id: u64
+
 pub struct PaymentIntent {
     pub id: u64,
     pub payer_agent: Address,
@@ -72,6 +91,7 @@ pub struct PaymentIntent {
     pub memo: String,
     pub settlement_reference: String,
     pub status: PaymentStatus,
+    pub created_at: u64,
 }
 
 // contracts/wallet/src/lib.rs
@@ -86,4 +106,4 @@ pub struct WalletBinding {
 
 ## Versioning
 
-Event topics and payload shapes are considered part of the contract's observable interface. Any future change that alters a topic element or payload field should be documented in both this file and in the release notes so that indexers and off-chain integrations can migrate.
+Event topics and payload shapes are part of the contracts' observable interface. Any future change that alters a topic element or payload field should be documented in this file and in the release notes so indexers and off-chain integrations can migrate deliberately.
