@@ -88,6 +88,28 @@ fn creates_and_settles_payment_intents() {
 }
 
 #[test]
+fn rejects_empty_settlement_reference_without_mutating_intent() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &5_000_i128,
+        &soroban_string(&env, "empty settlement reference"),
+    );
+    let before = client.get_intent(&id);
+
+    let result = client.try_settle_intent(&admin, &id, &soroban_string(&env, ""));
+    assert_eq!(result, Err(Ok(soroban_sdk::Error::from_contract_error(4))));
+
+    let after = client.get_intent(&id);
+    assert_eq!(after.status, PaymentStatus::Pending);
+    assert_eq!(after.settlement_reference, before.settlement_reference);
+}
+
+#[test]
 fn created_at_uses_mocked_ledger_timestamp() {
     let (env, _admin, client) = bootstrap();
     let payer = test_address(&env);
