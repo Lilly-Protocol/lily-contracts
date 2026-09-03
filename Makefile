@@ -4,7 +4,7 @@ CONTRACT_PACKAGES := protocol identity wallet payments
 WASM_TARGET := wasm32v1-none
 ARTIFACTS_DIR := dist
 
-.PHONY: fmt fmt-check lint check test doc build build-wasm artifacts ci clean help
+.PHONY: fmt fmt-check lint check test doc docs build build-wasm artifacts ci clean help
 
 help:
 	@printf "%s\n" \
@@ -48,9 +48,6 @@ test-locked:
 
 audit:
 	cargo audit
-
-docs:
-	cargo doc --workspace --no-deps
 
 size-report: build-wasm
 	@echo "=== Wasm Artifact Size Report ==="
