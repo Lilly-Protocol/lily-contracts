@@ -49,9 +49,6 @@ test-locked:
 audit:
 	cargo audit
 
-docs:
-	cargo doc --workspace --no-deps
-
 size-report: build-wasm
 	@echo "=== Wasm Artifact Size Report ==="
 	@for pkg in $(CONTRACT_PACKAGES); do \
