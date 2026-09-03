@@ -3,7 +3,8 @@
 //! Global protocol configuration contract for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_auth_or_error, require_valid_bps, ProtocolError,
+    bump_instance, read_instance, require, require_auth_or_error, require_valid_bps,
+    ProtocolConfig, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -28,6 +29,8 @@ enum DataKey {
     /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
     PinnedAdmin,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
 }
 
 #[contractimpl]
@@ -38,6 +41,12 @@ impl ProtocolContract {
     /// claim a fresh deployment with their own admin.
     pub fn __constructor(env: Env, initial_admin: Address) {
         env.storage().instance().set(&DataKey::PinnedAdmin, &initial_admin);
+    }
+
+    /// Return the protocol version.
+    #[must_use]
+    pub fn version(_env: Env) -> u32 {
+        lily_common::PROTOCOL_VERSION
     }
 
     /// Initialize protocol-wide configuration once.
@@ -54,8 +63,6 @@ impl ProtocolContract {
         );
         require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
-
-        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -77,6 +84,7 @@ impl ProtocolContract {
     }
 
     /// Return the contract schema version.
+    #[must_use]
     pub fn schema_version(env: Env) -> u32 {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -89,13 +97,14 @@ impl ProtocolContract {
         ensure_initialized(&env);
         bump_instance(&env);
         ProtocolConfig {
-            admin: get_admin_internal(&env),
+            admin: get_admin(&env),
             treasury: env.storage().instance().get(&DataKey::Treasury).unwrap_optimized(),
             fee_bps: env.storage().instance().get(&DataKey::FeeBps).unwrap_optimized(),
         }
     }
 
     /// Return the pending admin address if a transfer is in progress.
+    #[must_use]
     pub fn get_pending_admin(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::PendingAdmin)
     }

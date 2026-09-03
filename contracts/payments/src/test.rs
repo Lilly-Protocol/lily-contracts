@@ -3,12 +3,15 @@
 
 use lily_common::{PaymentStatus, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::testutils::Ledger;
+use soroban_sdk::testutils::{Ledger, MockAuth, MockAuthInvoke};
 use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{Error, IntoVal};
 
 use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
-fn bootstrap() -> (soroban_sdk::Env, soroban_sdk::Address, PaymentsContractClient<'static>) {
+fn bootstrap(
+) -> (soroban_sdk::Env, soroban_sdk::Address, soroban_sdk::Address, PaymentsContractClient<'static>)
+{
     let env = test_env();
     let treasury = test_address(&env);
     let admin = test_address(&env);
@@ -16,38 +19,22 @@ fn bootstrap() -> (soroban_sdk::Env, soroban_sdk::Address, PaymentsContractClien
     let contract_id = env.register(PaymentsContract, (admin.clone(),));
     let client = PaymentsContractClient::new(&env, &contract_id);
     client.initialize(&admin, &treasury, &50_u32);
-    (env, admin, client)
+    (env, admin, treasury, client)
 }
 
 #[test]
 fn returns_protocol_version() {
     let env = test_env();
-    let contract_id = env.register(PaymentsContract, ());
+    let admin = test_address(&env);
+    let contract_id = env.register(PaymentsContract, (admin,));
     let client = PaymentsContractClient::new(&env, &contract_id);
 
     assert_eq!(client.version(), PROTOCOL_VERSION);
 }
 
-fn setup_wallet(env: &soroban_sdk::Env, admin: &soroban_sdk::Address) -> soroban_sdk::Address {
-    let contract_id = env.register(WalletContract, ());
-    let client = WalletContractClient::new(env, &contract_id);
-    client.initialize(admin);
-    contract_id
-}
-
-fn bind_payer(
-    env: &soroban_sdk::Env,
-    wallet_id: &soroban_sdk::Address,
-    payer: &soroban_sdk::Address,
-) {
-    let wallet_addr = test_address(env);
-    let client = WalletContractClient::new(env, wallet_id);
-    client.bind_wallet(payer, &wallet_addr, &symbol_short!("USDC"), &10_000_i128);
-}
-
 #[test]
 fn creates_and_settles_payment_intents() {
-    let (env, admin, client) = bootstrap();
+    let (env, admin, treasury, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
@@ -89,7 +76,7 @@ fn creates_and_settles_payment_intents() {
 
 #[test]
 fn created_at_uses_mocked_ledger_timestamp() {
-    let (env, _admin, client) = bootstrap();
+    let (env, _admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
@@ -137,17 +124,10 @@ fn payer_can_cancel_pending_intents() {
 
 #[test]
 fn accepts_the_maximum_payment_amount() {
-    let (env, _admin, client) = bootstrap();
+    let (env, _admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
-    let wallet_id = setup_wallet(&env, &admin);
-    bind_payer(&env, &wallet_id, &payer);
-
-    let contract_id = env.register(PaymentsContract, ());
-    let client = PaymentsContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin, &treasury, &50_u32, &wallet_id);
     let id = client.create_intent(
         &payer,
         &payee,
@@ -160,7 +140,7 @@ fn accepts_the_maximum_payment_amount() {
 
 #[test]
 fn lists_payer_intents_with_cursor_pagination() {
-    let (env, _admin, client) = bootstrap();
+    let (env, _admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
     let other_payer = test_address(&env);
     let payee = test_address(&env);
@@ -186,7 +166,7 @@ fn lists_payer_intents_with_cursor_pagination() {
 #[test]
 #[should_panic]
 fn rejects_zero_page_limit() {
-    let (env, _admin, client) = bootstrap();
+    let (env, _admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
 
     client.list_intents(&payer, &0_u32, &0_u32);
@@ -195,19 +175,10 @@ fn rejects_zero_page_limit() {
 #[test]
 #[should_panic]
 fn rejects_payment_amount_above_the_maximum() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let treasury = test_address(&env);
+    let (env, _admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
-    let wallet_id = setup_wallet(&env, &admin);
-    bind_payer(&env, &wallet_id, &payer);
-
-    let contract_id = env.register(PaymentsContract, ());
-    let client = PaymentsContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin, &treasury, &50_u32);
     client.create_intent(
         &payer,
         &payee,
@@ -220,7 +191,8 @@ fn rejects_payment_amount_above_the_maximum() {
 #[should_panic]
 fn rejects_config_read_before_initialization() {
     let env = test_env();
-    let contract_id = env.register(PaymentsContract, ());
+    let admin = test_address(&env);
+    let contract_id = env.register(PaymentsContract, (admin,));
     let client = PaymentsContractClient::new(&env, &contract_id);
     client.get_config();
 }
@@ -228,16 +200,10 @@ fn rejects_config_read_before_initialization() {
 #[test]
 #[should_panic]
 fn rejects_settle_after_cancellation() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let treasury = test_address(&env);
+    let (env, admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
-    let contract_id = env.register(PaymentsContract, (admin.clone(),));
-    let client = PaymentsContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin, &treasury, &50_u32, &wallet_id);
     let id = client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, "cancel me"));
     client.cancel_intent(&id);
     client.settle_intent(&admin, &id, &soroban_string(&env, "tx-0002"));
@@ -247,7 +213,7 @@ fn rejects_settle_after_cancellation() {
 #[test]
 #[should_panic = "Error(Contract, #3)"]
 fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
-    let (env, _admin, client) = bootstrap();
+    let (env, _admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
@@ -260,29 +226,52 @@ fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
 #[test]
 #[should_panic]
 fn rejects_zero_amount_intent() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let treasury = test_address(&env);
+    let (env, _admin, _treasury, client) = bootstrap();
     let payer = test_address(&env);
     let payee = test_address(&env);
 
-    let contract_id = env.register(PaymentsContract, ());
-    let client = PaymentsContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin, &treasury, &50_u32);
     client.create_intent(&payer, &payee, &0_i128, &soroban_string(&env, "invalid zero amount"));
 }
 
 #[test]
 #[should_panic]
 fn rejects_get_intent_on_missing_record() {
+    let (_env, _admin, _treasury, client) = bootstrap();
+    client.get_intent(&999_u64);
+}
+
+#[test]
+fn rejects_initialize_with_non_pinned_admin() {
     let env = test_env();
-    let admin = test_address(&env);
+    let pinned_admin = test_address(&env);
+    let non_pinned_admin = test_address(&env);
     let treasury = test_address(&env);
 
-    let contract_id = env.register(PaymentsContract, ());
+    let contract_id = env.register(PaymentsContract, (pinned_admin.clone(),));
     let client = PaymentsContractClient::new(&env, &contract_id);
 
-    client.initialize(&admin, &treasury, &50_u32);
-    client.get_intent(&999_u64);
+    let result = client.try_initialize(&non_pinned_admin, &treasury, &50_u32);
+    assert_eq!(
+        result,
+        Err(Ok(Error::from_contract_error(lily_common::ProtocolError::Unauthorized as u32)))
+    );
+    assert!(!client.is_initialized());
+
+    // Positive path: pinned admin initializes successfully
+    client.initialize(&pinned_admin, &treasury, &50_u32);
+    assert!(client.is_initialized());
+}
+
+#[test]
+#[should_panic = "Error(Contract, #3)"]
+fn rejects_initialize_with_non_pinned_admin_panics() {
+    let env = test_env();
+    let pinned_admin = test_address(&env);
+    let non_pinned_admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (pinned_admin,));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&non_pinned_admin, &treasury, &50_u32);
 }

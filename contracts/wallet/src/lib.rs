@@ -2,7 +2,9 @@
 
 //! Agent wallet binding and policy contract.
 
-use lily_common::{bump_instance, require, ProtocolError};
+use lily_common::{
+    bump_instance, checked_inc, require, require_auth_or_error, require_enabled, ProtocolError,
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     Symbol,
@@ -61,7 +63,7 @@ impl WalletContract {
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        require_auth_or_error(&admin, &env);
+        require_initial_admin(&env, &admin);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
         env.storage().instance().set(&DataKey::Initialized, &true);
@@ -70,6 +72,7 @@ impl WalletContract {
     }
 
     /// Return whether the contract has been initialized.
+    #[must_use]
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
     }
@@ -121,7 +124,11 @@ impl WalletContract {
         wallet.require_auth();
 
         let key = DataKey::Binding(agent.clone());
-        require(&env, env.storage().persistent().has(&key), ProtocolError::MissingRecord);
+        let prev: WalletBinding =
+            env.storage().persistent().get(&key).unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
+            });
+        let next_revision = checked_inc(&env, prev.revision);
 
         let binding = WalletBinding {
             wallet,
@@ -191,6 +198,7 @@ impl WalletContract {
     }
 
     /// Read the current binding for an agent if one exists, returning `None` otherwise.
+    #[must_use]
     pub fn get_binding_opt(env: Env, agent: Address) -> Option<WalletBinding> {
         ensure_initialized(&env);
         bump_instance(&env);
@@ -204,6 +212,15 @@ fn ensure_initialized(env: &Env) {
         env.storage().instance().has(&DataKey::Initialized),
         ProtocolError::NotInitialized,
     );
+}
+
+fn require_initial_admin(env: &Env, admin: &Address) {
+    let pinned: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::PinnedAdmin)
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(env, ProtocolError::NotInitialized));
+    require(env, admin == &pinned, ProtocolError::Unauthorized);
 }
 
 fn get_admin(env: &Env) -> Address {
