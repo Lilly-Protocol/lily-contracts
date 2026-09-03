@@ -2,7 +2,9 @@
 
 //! Agent wallet binding and policy contract.
 
-use lily_common::{bump_instance, require, ProtocolError};
+use lily_common::{
+    bump_instance, checked_inc, require, require_auth_or_error, require_enabled, ProtocolError,
+};
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
     Symbol,
@@ -128,7 +130,7 @@ impl WalletContract {
             settlement_asset,
             spend_limit,
             enabled: true,
-            revision: next_revision,
+            revision: 0,
         };
 
         env.storage().persistent().set(&key, &binding);
