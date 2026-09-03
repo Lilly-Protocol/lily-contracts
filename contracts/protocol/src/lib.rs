@@ -3,7 +3,7 @@
 //! Global protocol configuration contract for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_auth_or_error, require_valid_bps, ProtocolError,
+    bump_instance, read_instance, require, require_auth_or_error, require_valid_bps, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
