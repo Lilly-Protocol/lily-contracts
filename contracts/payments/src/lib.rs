@@ -120,6 +120,7 @@ impl PaymentsContract {
 
     /// Return whether the contract has been initialized.
     pub fn is_initialized(env: Env) -> bool {
+        bump_instance(&env);
         env.storage().instance().has(&DataKey::Initialized)
     }
 
