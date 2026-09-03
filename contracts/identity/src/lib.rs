@@ -3,7 +3,7 @@
 //! Agent identity registry for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_auth_or_error, require_non_empty, ProtocolError,
+    bump_instance, checked_inc, require, require_auth_or_error, require_non_empty, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
