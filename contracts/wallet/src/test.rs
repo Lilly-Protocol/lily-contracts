@@ -8,8 +8,8 @@ use soroban_sdk::{Address, Env, IntoVal};
 use super::{WalletBinding, WalletContract, WalletContractClient};
 use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
-use soroban_sdk::{Address, TryIntoVal};
 use soroban_sdk::testutils::Events;
+use soroban_sdk::{Address, TryIntoVal};
 
 #[test]
 fn returns_protocol_version() {
@@ -188,4 +188,3 @@ fn admin_can_deactivate_wallet_binding() {
     assert!(!binding.enabled);
     assert_eq!(binding.revision, 1);
 }
-

@@ -165,18 +165,10 @@ fn lists_payer_intents_with_cursor_pagination() {
     let other_payer = test_address(&env);
     let payee = test_address(&env);
 
-    let first_id =
-        client.create_intent(&payer, &payee, &10_i128, &soroban_string(&env, "first"));
-    let second_id =
-        client.create_intent(&payer, &payee, &20_i128, &soroban_string(&env, "second"));
-    let third_id =
-        client.create_intent(&payer, &payee, &30_i128, &soroban_string(&env, "third"));
-    client.create_intent(
-        &other_payer,
-        &payee,
-        &40_i128,
-        &soroban_string(&env, "other payer"),
-    );
+    let first_id = client.create_intent(&payer, &payee, &10_i128, &soroban_string(&env, "first"));
+    let second_id = client.create_intent(&payer, &payee, &20_i128, &soroban_string(&env, "second"));
+    let third_id = client.create_intent(&payer, &payee, &30_i128, &soroban_string(&env, "third"));
+    client.create_intent(&other_payer, &payee, &40_i128, &soroban_string(&env, "other payer"));
 
     let first_page = client.list_intents(&payer, &0_u32, &2_u32);
     assert_eq!(first_page.len(), 2);
@@ -294,4 +286,3 @@ fn rejects_get_intent_on_missing_record() {
     client.initialize(&admin, &treasury, &50_u32);
     client.get_intent(&999_u64);
 }
-

@@ -1,8 +1,8 @@
 [package]
 name = "identity"
-description = "Soroban smart contract for Lily Protocol agent identity registration and management"
-keywords = ["lily-protocol", "soroban", "stellar", "blockchain"]
-categories = ["cryptography::cryptocurrencies"]
+description = "Lily Protocol agent identity registry on Soroban: registration, profiles and controllers."
+keywords.workspace = true
+categories.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,10 +10,6 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 rust-version.workspace = true
-
-description = "Lily Protocol agent identity registry on Soroban: registration, profiles and controllers."
-keywords.workspace = true
-categories.workspace = true
 publish = false
 
 [lib]

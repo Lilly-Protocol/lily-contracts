@@ -278,11 +278,7 @@ fn rejects_update_on_deactivated_profile() {
     client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
     client.deactivate(&agent);
 
-    client.update_profile(
-        &agent,
-        &soroban_string(&env, "ipfs://profile-v2"),
-        &None,
-    );
+    client.update_profile(&agent, &soroban_string(&env, "ipfs://profile-v2"), &None);
 }
 
 #[test]
@@ -298,4 +294,3 @@ fn rejects_get_profile_on_unregistered_agent() {
     client.initialize(&admin);
     client.get_profile(&unknown_agent);
 }
-

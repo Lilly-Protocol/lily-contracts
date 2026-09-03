@@ -159,21 +159,16 @@ impl PaymentsContract {
         memo: String,
     ) -> u64 {
         ensure_initialized(&env);
-        require(
-            &env,
-            amount > 0 && amount <= MAX_PAYMENT_AMOUNT,
-            ProtocolError::InvalidInput,
-        );
+        require(&env, amount > 0 && amount <= MAX_PAYMENT_AMOUNT, ProtocolError::InvalidInput);
         require_non_empty(&env, memo.len());
         require(&env, payer_agent != payee_agent, ProtocolError::InvalidInput);
 
         payer_agent.require_auth();
 
-        let wallet: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Wallet)
-            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord));
+        let wallet: Address =
+            env.storage().instance().get(&DataKey::Wallet).unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
+            });
         let wallet_client = crate::WalletContractClient::new(&env, &wallet);
         require(
             &env,
@@ -196,15 +191,10 @@ impl PaymentsContract {
 
         env.storage().persistent().set(&DataKey::Intent(id), &intent);
         let payer_index_key = DataKey::PayerIntents(intent.payer_agent.clone());
-        let mut payer_intent_ids: Vec<u64> = env
-            .storage()
-            .persistent()
-            .get(&payer_index_key)
-            .unwrap_or_else(|| Vec::new(&env));
+        let mut payer_intent_ids: Vec<u64> =
+            env.storage().persistent().get(&payer_index_key).unwrap_or_else(|| Vec::new(&env));
         payer_intent_ids.push_back(id);
-        env.storage()
-            .persistent()
-            .set(&payer_index_key, &payer_intent_ids);
+        env.storage().persistent().set(&payer_index_key, &payer_intent_ids);
         env.storage().instance().set(&DataKey::NextIntentId, &checked_inc(&env, id));
         bump_instance(&env);
         env.events().publish((symbol_short!("create"), id), intent);
@@ -270,8 +260,6 @@ impl PaymentsContract {
         );
     }
 
-
-
     /// Update the fee charged on payment intents, in basis points.
     pub fn set_fee_bps(env: Env, fee_bps: u32) {
         ensure_initialized(&env);
@@ -316,7 +304,6 @@ impl PaymentsContract {
         bump_instance(&env);
         get_intent_internal(&env, intent_id)
     }
-
 
     /// Read an individual payment intent if it exists, returning `None` otherwise.
     pub fn get_intent_opt(env: Env, intent_id: u64) -> Option<PaymentIntent> {

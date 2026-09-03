@@ -92,11 +92,7 @@ impl WalletContract {
         require_auth_or_error(&wallet, &env);
 
         let key = DataKey::Binding(agent.clone());
-        require(
-            &env,
-            !env.storage().persistent().has(&key),
-            ProtocolError::WalletAlreadyBound,
-        );
+        require(&env, !env.storage().persistent().has(&key), ProtocolError::WalletAlreadyBound);
 
         let binding =
             WalletBinding { wallet, settlement_asset, spend_limit, enabled: true, revision: 0 };
@@ -125,11 +121,7 @@ impl WalletContract {
         wallet.require_auth();
 
         let key = DataKey::Binding(agent.clone());
-        require(
-            &env,
-            env.storage().persistent().has(&key),
-            ProtocolError::MissingRecord,
-        );
+        require(&env, env.storage().persistent().has(&key), ProtocolError::MissingRecord);
 
         let binding = WalletBinding {
             wallet,
@@ -198,7 +190,6 @@ impl WalletContract {
         get_binding_internal(&env, &agent)
     }
 
-
     /// Read the current binding for an agent if one exists, returning `None` otherwise.
     pub fn get_binding_opt(env: Env, agent: Address) -> Option<WalletBinding> {
         ensure_initialized(&env);
@@ -227,4 +218,3 @@ fn get_binding_internal(env: &Env, agent: &Address) -> WalletBinding {
 }
 
 mod test;
-

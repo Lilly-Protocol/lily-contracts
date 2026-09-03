@@ -2,10 +2,13 @@
 
 //! Shared Soroban primitives used across Lily Protocol contracts.
 
-use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env, String, Symbol};
 
 /// Maximum basis points accepted by percentage-based configuration.
 pub const MAX_BPS: u32 = 10_000;
+
+/// Maximum length accepted for storage-bound metadata and reference strings.
+pub const MAX_STRING_LEN: u32 = 512;
 
 /// Shared on-chain protocol interface version exposed by every contract.
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -21,7 +24,6 @@ pub const INSTANCE_BUMP_AMOUNT: u32 = 172_800;
 /// Numeric discriminants are part of the on-wire encoding; new variants are
 /// appended at the end so previously encoded values keep their identity.
 #[contracterror]
-#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[non_exhaustive]
 #[repr(u32)]
@@ -40,9 +42,7 @@ pub enum ProtocolError {
 }
 
 /// Shared payment status used by settlement-oriented contracts.
-#[non_exhaustive]
 #[contracttype]
-#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum PaymentStatus {
@@ -148,6 +148,7 @@ impl NonReentrantGuard {
     ///
     /// # Panics
     /// Raises [`ProtocolError::ReentrantCall`] if the guard is already held.
+    #[must_use]
     pub fn acquire(env: &Env, key: Symbol) -> Self {
         require(env, !env.storage().instance().has(&key), ProtocolError::ReentrantCall);
         env.storage().instance().set(&key, &true);

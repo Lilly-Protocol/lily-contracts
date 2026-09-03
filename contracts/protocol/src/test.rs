@@ -33,11 +33,7 @@ fn initializes_once_and_reads_config() {
     let config = client.get_config();
     assert_eq!(
         config,
-        ProtocolConfig {
-            admin: admin.clone(),
-            treasury: treasury.clone(),
-            fee_bps: 250,
-        }
+        ProtocolConfig { admin: admin.clone(), treasury: treasury.clone(), fee_bps: 250 }
     );
 }
 
@@ -66,11 +62,7 @@ fn initialize_emits_init_event() {
     let data: ProtocolConfig = event.2.try_into_val(&env).unwrap();
     assert_eq!(
         data,
-        ProtocolConfig {
-            admin: admin.clone(),
-            treasury: treasury.clone(),
-            fee_bps: 250,
-        }
+        ProtocolConfig { admin: admin.clone(), treasury: treasury.clone(), fee_bps: 250 }
     );
 }
 
@@ -204,4 +196,3 @@ fn rejects_set_fee_bps_above_max() {
     client.initialize(&admin, &treasury, &100_u32);
     client.set_fee_bps(&10_001_u32);
 }
-

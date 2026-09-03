@@ -147,11 +147,8 @@ impl ProtocolContract {
             ProtocolError::MissingRecord,
         );
 
-        let pending_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::PendingAdmin)
-            .unwrap_optimized();
+        let pending_admin: Address =
+            env.storage().instance().get(&DataKey::PendingAdmin).unwrap_optimized();
         pending_admin.require_auth();
 
         let old_admin = get_admin(&env);
@@ -161,7 +158,6 @@ impl ProtocolContract {
         env.events().publish((symbol_short!("admin"), old_admin), pending_admin);
     }
 }
-
 
 fn ensure_initialized(env: &Env) {
     require(

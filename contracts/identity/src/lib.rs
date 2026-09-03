@@ -112,9 +112,8 @@ impl IdentityContract {
         require_auth_or_error(&profile.controller, &env);
 
         let metadata_changed = profile.metadata_uri != metadata_uri;
-        let controller_changed = new_controller
-            .as_ref()
-            .is_some_and(|next| next != &profile.controller);
+        let controller_changed =
+            new_controller.as_ref().is_some_and(|next| next != &profile.controller);
 
         profile.metadata_uri = metadata_uri;
         if let Some(next_controller) = new_controller {
@@ -183,7 +182,6 @@ impl IdentityContract {
         bump_instance(&env);
         get_profile_internal(&env, &agent)
     }
-
 
     /// Fetch a registered profile if it exists, returning `None` for missing records.
     pub fn get_profile_opt(env: Env, agent: Address) -> Option<AgentProfile> {
