@@ -27,6 +27,8 @@ enum DataKey {
     FeeBps,
     /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
     PinnedAdmin,
 }
 
