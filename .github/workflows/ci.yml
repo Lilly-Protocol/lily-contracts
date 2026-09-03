@@ -23,10 +23,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -35,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@1.83
+        uses: dtolnay/rust-toolchain@1.85
 
       # Pin stellar-cli to v22.8.2 to match soroban-sdk v22 (Protocol 22)
       - name: Install Stellar CLI
