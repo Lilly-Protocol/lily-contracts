@@ -169,7 +169,7 @@ impl PaymentsContract {
             env.storage().instance().get(&DataKey::Wallet).unwrap_or_else(|| {
                 soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
             });
-        let wallet_client = crate::WalletContractClient::new(&env, &wallet);
+        let wallet_client = WalletContractClient::new(&env, &wallet);
         require(
             &env,
             wallet_client.has_active_binding(&payer_agent),
