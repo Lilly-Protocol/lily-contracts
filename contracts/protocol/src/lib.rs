@@ -2,8 +2,9 @@
 
 //! Global protocol configuration contract for Lily Protocol.
 
+pub use lily_common::ProtocolConfig;
 use lily_common::{
-    bump_instance, require, require_auth_or_error, require_valid_bps, ProtocolError,
+    bump_instance, read_instance, require, require_auth_or_error, require_valid_bps, ProtocolError,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -27,6 +28,8 @@ enum DataKey {
     FeeBps,
     /// Marker boolean indicating if the contract has been initialized. Durability: Instance.
     Initialized,
+    /// Stores the schema version (`u32`). Durability: Instance.
+    SchemaVersion,
     PinnedAdmin,
 }
 
@@ -45,17 +48,14 @@ impl ProtocolContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
-        admin.require_auth();
-
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_auth_or_error(&admin, &env);
         require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
-
-        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -172,8 +172,12 @@ fn require_initial_admin(env: &Env, admin: &Address) {
     require(env, *admin == pinned, ProtocolError::Unauthorized);
 }
 
-fn get_admin(env: &Env) -> Address {
+fn get_admin_internal(env: &Env) -> Address {
     read_instance(env, DataKey::Admin)
+}
+
+fn get_admin(env: &Env) -> Address {
+    get_admin_internal(env)
 }
 
 mod test;
