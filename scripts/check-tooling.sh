@@ -7,6 +7,10 @@
 # Required (strict) tools: rustc, cargo, rustfmt, stellar, wasm32v1-none stdlib.
 set -u
 
+# Repo root derived from this script's own location (never rely on the
+# caller's environment; CI does not export REPO_ROOT).
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 STRICT=0
 for arg in "$@"; do
   case "$arg" in
@@ -46,7 +50,8 @@ else
   missing_count=$((missing_count + 1))
 fi
 
-# Extract soroban-sdk major version from workspace
+# Extract soroban-sdk major version from the workspace:
+# prefer Cargo.lock (exact resolution), fall back to Cargo.toml, then default.
 SDK_MAJOR=""
 if [ -f "$REPO_ROOT/Cargo.lock" ]; then
   SDK_MAJOR="$(sed -n '/name = "soroban-sdk"/{n;s/version = "\([0-9]*\).*/\1/p;}' "$REPO_ROOT/Cargo.lock" | head -n 1)"
@@ -56,17 +61,11 @@ if [ -z "$SDK_MAJOR" ] && [ -f "$REPO_ROOT/Cargo.toml" ]; then
 fi
 SDK_MAJOR="${SDK_MAJOR:-22}"
 
-# Extract soroban-sdk major version from Cargo.toml or Cargo.lock
-SDK_MAJOR=""
-if [ -f "$REPO_ROOT/Cargo.toml" ]; then
-  SDK_MAJOR=$(grep -E "^[[:space:]]*soroban-sdk[[:space:]]*=" "$REPO_ROOT/Cargo.toml" | head -n 1 | grep -oE "[0-9]+" | head -n 1)
-fi
-if [ -z "$SDK_MAJOR" ] && [ -f "$REPO_ROOT/Cargo.lock" ]; then
-  SDK_MAJOR=$(grep -A 1 'name = "soroban-sdk"' "$REPO_ROOT/Cargo.lock" | grep "version =" | head -n 1 | grep -oE "[0-9]+" | head -n 1)
-fi
+printf "soroban-sdk major: %s\n" "$SDK_MAJOR"
 
 if command -v stellar >/dev/null 2>&1; then
-  have stellar stellar --version
+  printf "stellar: "
+  stellar --version
 else
   printf "stellar: not installed\n"
   missing_count=$((missing_count + 1))
@@ -75,7 +74,8 @@ fi
 if command -v rustc >/dev/null 2>&1 && rustc --print target-list | grep -qx "wasm32v1-none"; then
   printf "wasm target available in toolchain list: yes\n"
 else
-  miss wasm32v1-none-target "not in toolchain target list"
+  printf "wasm32v1-none target: not in toolchain target list\n"
+  missing_count=$((missing_count + 1))
 fi
 
 if command -v rustc >/dev/null 2>&1 && [ -d "$(rustc --print sysroot)/lib/rustlib/wasm32v1-none/lib" ]; then
