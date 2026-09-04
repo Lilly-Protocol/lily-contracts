@@ -118,6 +118,30 @@ impl PaymentsContract {
         env.events().publish((symbol_short!("init"), admin), config);
     }
 
+    /// Update the bound wallet contract address.
+    pub fn set_wallet(env: Env, wallet: Address) {
+        ensure_initialized(&env);
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Wallet, &wallet);
+        bump_instance(&env);
+
+        env.events().publish((symbol_short!("wallet"), admin), wallet);
+    }
+
+    /// Return the bound wallet contract address.
+    pub fn get_wallet(env: Env) -> Address {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage()
+            .instance()
+            .get(&DataKey::Wallet)
+            .unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
+            })
+    }
+
     /// Return whether the contract has been initialized.
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
