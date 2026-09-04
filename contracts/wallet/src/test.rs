@@ -14,10 +14,24 @@ use soroban_sdk::{Address, TryIntoVal};
 #[test]
 fn returns_protocol_version() {
     let env = test_env();
-    let contract_id = env.register(WalletContract, ());
+    let admin = test_address(&env);
+    let contract_id = env.register(WalletContract, (admin,));
     let client = WalletContractClient::new(&env, &contract_id);
 
     assert_eq!(client.version(), PROTOCOL_VERSION);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #3)")]
+fn rejects_unpinned_admin_initialization() {
+    let env = test_env();
+    let deployer = test_address(&env);
+    let other = test_address(&env);
+
+    let contract_id = env.register(WalletContract, (deployer,));
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&other);
 }
 
 #[test]
@@ -79,7 +93,7 @@ fn rejects_binding_when_any_binding_exists() {
     let wallet = test_address(&env);
     let wallet2 = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -98,7 +112,7 @@ fn rebinds_disabled_binding_explicitly() {
     let wallet = test_address(&env);
     let new_wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -123,7 +137,7 @@ fn rebinds_enabled_binding_explicitly() {
     let wallet = test_address(&env);
     let new_wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -148,7 +162,7 @@ fn rejects_rebind_without_existing_binding() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -177,7 +191,7 @@ fn admin_can_deactivate_wallet_binding() {
     let agent = test_address(&env);
     let wallet = test_address(&env);
 
-    let contract_id = env.register(WalletContract, ());
+    let contract_id = env.register(WalletContract, (admin.clone(),));
     let client = WalletContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
