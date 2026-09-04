@@ -69,6 +69,16 @@ impl WalletContract {
         env.events().publish((symbol_short!("init"),), admin);
     }
 
+    /// Return the schema version.
+    pub fn schema_version(env: Env) -> u32 {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage()
+            .instance()
+            .get(&DataKey::SchemaVersion)
+            .unwrap_or(SCHEMA_VERSION)
+    }
+
     /// Return whether the contract has been initialized.
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
