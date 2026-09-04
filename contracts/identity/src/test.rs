@@ -211,6 +211,51 @@ fn emits_no_update_events_when_nothing_changes() {
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
         .collect();
     assert_eq!(rotate_events.len(), 0);
+
+    let profile = client.get_profile(&agent);
+    assert_eq!(profile.revision, 0);
+}
+
+#[test]
+fn update_profile_with_identical_controller_is_noop() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile-v1"));
+
+    let initial = client.get_profile(&agent);
+    assert_eq!(initial.revision, 0);
+
+    // Calling update_profile with identical URI and existing controller in Some is a no-op.
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v1"),
+        &Some(controller.clone()),
+    );
+
+    let unchanged = client.get_profile(&agent);
+    assert_eq!(unchanged.revision, 0);
+    assert_eq!(unchanged.controller, controller);
+    assert_eq!(unchanged.metadata_uri, soroban_string(&env, "ipfs://profile-v1"));
+
+    // Verify a genuine change still bumps revision to 1 and updates storage.
+    let new_controller = test_address(&env);
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v2"),
+        &Some(new_controller.clone()),
+    );
+
+    let updated = client.get_profile(&agent);
+    assert_eq!(updated.revision, 1);
+    assert_eq!(updated.controller, new_controller);
+    assert_eq!(updated.metadata_uri, soroban_string(&env, "ipfs://profile-v2"));
 }
 
 #[test]
