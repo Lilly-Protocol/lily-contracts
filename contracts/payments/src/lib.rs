@@ -3,8 +3,8 @@
 //! Payment intent and settlement primitives for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_non_empty, require_valid_bps, PaymentStatus, ProtocolError,
-    MAX_BPS,
+    bump_instance, checked_inc, read_instance, require, require_auth_or_error, require_caller,
+    require_non_empty, require_valid_bps, NonReentrantGuard, PaymentStatus, ProtocolError, MAX_BPS,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -20,6 +20,20 @@ pub const MAX_PAYMENT_AMOUNT: i128 = i128::MAX / (MAX_BPS as i128);
 
 /// Maximum number of payment intents returned by one paginated query.
 pub const MAX_INTENTS_PAGE_SIZE: u32 = 100;
+
+/// Payments contract schema version.
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// Snapshot of the payments configuration used for the init event and get_config.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaymentsConfig {
+    pub admin: Address,
+    pub treasury: Address,
+    pub fee_bps: u32,
+    pub next_intent_id: u64,
+    pub wallet: Address,
+}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,14 +77,7 @@ fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
         PaymentStatus::Pending => symbol_short!("pending"),
         PaymentStatus::Settled => symbol_short!("settled"),
         PaymentStatus::Cancelled => symbol_short!("cancelled"),
-    }
-}
-
-fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
-    match status {
-        PaymentStatus::Pending => symbol_short!("pending"),
-        PaymentStatus::Settled => symbol_short!("settled"),
-        PaymentStatus::Cancelled => symbol_short!("cancelled"),
+        _ => symbol_short!("unknown"),
     }
 }
 
@@ -88,18 +95,15 @@ impl PaymentsContract {
     ///
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
-    pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32) {
-        admin.require_auth();
-
+    pub fn initialize(env: Env, admin: Address, treasury: Address, fee_bps: u32, wallet: Address) {
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
+        require_auth_or_error(&admin, &env);
         require_initial_admin(&env, &admin);
         require_valid_bps(&env, fee_bps);
-
-        require_auth_or_error(&admin, &env);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Treasury, &treasury);
@@ -114,6 +118,7 @@ impl PaymentsContract {
             treasury: treasury.clone(),
             fee_bps,
             next_intent_id: 1,
+            wallet,
         };
         env.events().publish((symbol_short!("init"), admin), config);
     }
@@ -135,10 +140,12 @@ impl PaymentsContract {
     pub fn get_config(env: Env) -> PaymentsConfig {
         ensure_initialized(&env);
         bump_instance(&env);
-        ProtocolConfig {
+        PaymentsConfig {
             admin: read_instance(&env, DataKey::Admin),
             treasury: read_instance(&env, DataKey::Treasury),
             fee_bps: read_instance(&env, DataKey::FeeBps),
+            next_intent_id: read_instance(&env, DataKey::NextIntentId),
+            wallet: read_instance(&env, DataKey::Wallet),
         }
     }
 
@@ -169,12 +176,12 @@ impl PaymentsContract {
             env.storage().instance().get(&DataKey::Wallet).unwrap_or_else(|| {
                 soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
             });
-        let wallet_client = crate::WalletContractClient::new(&env, &wallet);
-        require(
-            &env,
-            wallet_client.has_active_binding(&payer_agent),
-            ProtocolError::WalletNotBound,
-        );
+        let wallet_client = WalletContractClient::new(&env, &wallet);
+        let binding = wallet_client
+            .get_binding_opt(&payer_agent)
+            .unwrap_or_else(|| soroban_sdk::panic_with_error!(&env, ProtocolError::WalletNotBound));
+        require(&env, binding.enabled, ProtocolError::WalletDisabled);
+        require(&env, amount <= binding.spend_limit, ProtocolError::SpendLimitExceeded);
 
         let id: u64 = env.storage().instance().get(&DataKey::NextIntentId).unwrap_optimized();
 
@@ -310,6 +317,31 @@ impl PaymentsContract {
         ensure_initialized(&env);
         bump_instance(&env);
         env.storage().persistent().get(&DataKey::Intent(intent_id))
+    }
+
+    /// List a payer's payment intents with cursor pagination.
+    pub fn list_intents(env: Env, payer: Address, cursor: u32, limit: u32) -> Vec<PaymentIntent> {
+        ensure_initialized(&env);
+        require(&env, limit > 0, ProtocolError::InvalidInput);
+        bump_instance(&env);
+
+        let ids: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PayerIntents(payer))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let mut result = Vec::new(&env);
+        let start = cursor as u64;
+        let end = start + limit as u64;
+        let mut i = 0_u64;
+        for id in ids.iter() {
+            if i >= start && i < end {
+                result.push_back(get_intent_internal(&env, id));
+            }
+            i += 1;
+        }
+        result
     }
 }
 

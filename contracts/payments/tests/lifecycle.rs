@@ -7,6 +7,7 @@ use lily_common::PaymentStatus;
 use lily_test_support::{soroban_string, test_address, test_env};
 use payments::{PaymentIntent, PaymentsContract, PaymentsContractClient};
 use soroban_sdk::symbol_short;
+use soroban_sdk::testutils::Ledger;
 use wallet::{WalletContract, WalletContractClient};
 
 #[test]
@@ -40,7 +41,7 @@ fn agent_lifecycle_register_bind_create_settle() {
     // 3. Payments: create an intent from the registered agent to the payee.
     let payments_id = env.register(PaymentsContract, (admin.clone(),));
     let payments = PaymentsContractClient::new(&env, &payments_id);
-    payments.initialize(&admin, &treasury, &250_u32);
+    payments.initialize(&admin, &treasury, &250_u32, &wallet_id);
     let intent_id = payments.create_intent(
         &agent,
         &payee,
@@ -61,6 +62,7 @@ fn agent_lifecycle_register_bind_create_settle() {
             memo: soroban_string(&env, "agent-to-payee service fee"),
             settlement_reference: soroban_string(&env, ""),
             status: PaymentStatus::Pending,
+            created_at: env.ledger().get().timestamp,
         }
     );
     assert!(identity.get_profile(&agent).active);
@@ -68,7 +70,7 @@ fn agent_lifecycle_register_bind_create_settle() {
     assert!(wallet_client.get_binding(&agent).enabled);
 
     // 4. Settlement flips only the intent; upstream contracts are untouched.
-    payments.settle_intent(&intent_id, &soroban_string(&env, "tx-lifecycle-0001"));
+    payments.settle_intent(&admin, &intent_id, &soroban_string(&env, "tx-lifecycle-0001"));
     let settled = payments.get_intent(&intent_id);
     assert_eq!(settled.status, PaymentStatus::Settled);
     assert_eq!(settled.settlement_reference, soroban_string(&env, "tx-lifecycle-0001"));
