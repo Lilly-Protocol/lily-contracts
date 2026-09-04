@@ -6,7 +6,8 @@ use soroban_sdk::Address;
 
 use super::{AgentProfile, DataKey, IdentityContract, IdentityContractClient};
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::{FromVal, IntoVal, Symbol, Val, Vec};
+use soroban_sdk::testutils::Events as _;
+use soroban_sdk::{symbol_short, FromVal, IntoVal, Symbol, TryIntoVal, Val, Vec};
 
 #[test]
 fn data_key_encodings_are_stable() {
@@ -293,4 +294,94 @@ fn rejects_get_profile_on_unregistered_agent() {
 
     client.initialize(&admin);
     client.get_profile(&unknown_agent);
+}
+
+#[test]
+fn reactivate_deactivated_agent_restores_active_bumps_revision_and_emits_event() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+    client.deactivate(&agent);
+
+    let deactivated = client.get_profile(&agent);
+    assert!(!deactivated.active);
+    assert_eq!(deactivated.revision, 1);
+
+    // Clear events before reactivate
+    let _ = env.events().all();
+
+    // Reactivate
+    client.reactivate(&agent);
+
+    // Emits exactly one event
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
+    let event = events.get_unchecked(0);
+    assert_eq!(event.0, contract_id);
+    let topic0: soroban_sdk::Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
+    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("react"));
+    assert_eq!(topic1, agent);
+
+    let reactivated = client.get_profile(&agent);
+    assert!(reactivated.active);
+    assert_eq!(reactivated.revision, 2);
+
+    let data: AgentProfile = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data, reactivated);
+}
+
+#[test]
+fn reactivating_already_active_agent_is_noop() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+
+    let initial = client.get_profile(&agent);
+    assert!(initial.active);
+    assert_eq!(initial.revision, 0);
+
+    // Clear events
+    let _ = env.events().all();
+
+    // Reactivate on already active agent
+    client.reactivate(&agent);
+
+    // No react event emitted
+    let events = env.events().all();
+    assert_eq!(events.len(), 0);
+
+    let profile_after = client.get_profile(&agent);
+    assert_eq!(profile_after, initial);
+    assert_eq!(profile_after.revision, 0);
+    assert!(profile_after.active);
+
+    // Now deactivate, reactivate once, then test second reactivate is noop
+    client.deactivate(&agent);
+    let _ = env.events().all();
+    client.reactivate(&agent);
+    let events_first = env.events().all();
+    assert_eq!(events_first.len(), 1);
+
+    // Second reactivate call while active: leaves revision and stored profile unchanged
+    client.reactivate(&agent);
+    let events_second = env.events().all();
+    assert_eq!(events_second.len(), 0);
+
+    let profile_second = client.get_profile(&agent);
+    assert_eq!(profile_second.revision, 2);
 }
