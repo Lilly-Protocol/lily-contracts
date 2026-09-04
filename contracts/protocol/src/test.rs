@@ -2,10 +2,11 @@
 #![cfg(test)]
 
 use super::{ProtocolConfig, ProtocolContract, ProtocolContractClient, SCHEMA_VERSION};
+use lily_common::{INSTANCE_BUMP_AMOUNT, INSTANCE_BUMP_THRESHOLD};
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::{
     symbol_short,
-    testutils::{Events, MockAuth, MockAuthInvoke},
+    testutils::{storage::Instance as _, Events, Ledger as _, MockAuth, MockAuthInvoke},
     vec,
     xdr::{ScErrorCode, ScErrorType},
     Address, Error, TryIntoVal,
@@ -286,4 +287,55 @@ fn rejects_set_fee_bps_above_max() {
 
     client.initialize(&admin, &treasury, &100_u32);
     client.set_fee_bps(&10_001_u32);
+}
+
+#[test]
+#[should_panic]
+fn get_pending_admin_before_initialize_panics_not_initialized() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let contract_id = env.register(ProtocolContract, (admin,));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    let _ = client.get_pending_admin();
+}
+
+#[test]
+fn get_pending_admin_lifecycle_after_transfer_and_accept() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    assert_eq!(client.get_pending_admin(), None);
+
+    client.transfer_admin(&next_admin);
+    assert_eq!(client.get_pending_admin(), Some(next_admin.clone()));
+
+    client.accept_admin();
+    assert_eq!(client.get_pending_admin(), None);
+}
+
+#[test]
+fn get_pending_admin_bumps_instance_ttl() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    env.ledger().set_sequence_number(INSTANCE_BUMP_AMOUNT - INSTANCE_BUMP_THRESHOLD + 1);
+    let ttl_before = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert!(ttl_before < INSTANCE_BUMP_THRESHOLD);
+
+    let _ = client.get_pending_admin();
+
+    let ttl_after = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+    assert_eq!(ttl_after, INSTANCE_BUMP_AMOUNT);
 }

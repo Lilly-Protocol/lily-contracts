@@ -98,6 +98,8 @@ impl ProtocolContract {
 
     /// Return the pending admin address if a transfer is in progress.
     pub fn get_pending_admin(env: Env) -> Option<Address> {
+        ensure_initialized(&env);
+        bump_instance(&env);
         env.storage().instance().get(&DataKey::PendingAdmin)
     }
 
