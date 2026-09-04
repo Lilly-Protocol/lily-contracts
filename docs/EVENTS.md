@@ -33,7 +33,7 @@ This document lists every event emitted by the Lily Protocol contracts, grouped 
 
 | Topic | Payload type | Trigger function | Payload fields |
 |---|---|---|---|
-| `("init",)` | `Address` | `initialize(env, admin)` | The wallet registry admin address. |
+| `("init", admin)` | `WalletConfig` | `initialize(env, admin)` | `admin: Address` |
 | `("bind", agent)` | `WalletBinding` | `bind_wallet(env, agent, wallet, settlement_asset, spend_limit)` | `wallet: Address`, `settlement_asset: Symbol`, `spend_limit: i128`, `enabled: bool`, `revision: u64` |
 | `("limit", agent)` | `WalletBinding` | `update_spend_limit(env, agent, spend_limit)` | Binding after the spend limit is updated and `revision` is incremented. |
 | `("state", agent)` | `WalletBinding` | `set_enabled(env, agent, enabled)` | Binding after `enabled` is toggled and `revision` is incremented. |
