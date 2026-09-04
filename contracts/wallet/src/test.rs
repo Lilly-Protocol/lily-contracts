@@ -188,3 +188,27 @@ fn admin_can_deactivate_wallet_binding() {
     assert!(!binding.enabled);
     assert_eq!(binding.revision, 1);
 }
+
+#[test]
+fn get_binding_opt_returns_none_for_unbound_and_some_for_bound_and_disabled() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let wallet = test_address(&env);
+    let contract_id = env.register(WalletContract, (admin.clone(),));
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    assert_eq!(client.get_binding_opt(&agent), None);
+
+    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+    let binding = client.get_binding_opt(&agent);
+    assert!(binding.is_some());
+    assert!(binding.unwrap().enabled);
+
+    client.set_enabled(&agent, &false);
+    let disabled = client.get_binding_opt(&agent);
+    assert!(disabled.is_some());
+    assert!(!disabled.unwrap().enabled);
+}
