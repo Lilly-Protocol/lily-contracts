@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use lily_common::{PaymentStatus, PROTOCOL_VERSION};
+use lily_common::{PaymentStatus, ProtocolError, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::testutils::Ledger;
 use soroban_sdk::unwrap::UnwrapOptimized;
@@ -255,6 +255,90 @@ fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
     // Payer tries to settle: signature would pass under mock_all_auths, but
     // the typed role check must fire first with ProtocolError::Unauthorized.
     client.settle_intent(&payer, &id, &soroban_string(&env, "tx-not-admin"));
+}
+
+#[test]
+fn reentrancy_guard_clears_between_independent_settlements() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id1 = client.create_intent(&payer, &payee, &1_000_i128, &soroban_string(&env, "intent 1"));
+    let id2 = client.create_intent(&payer, &payee, &2_000_i128, &soroban_string(&env, "intent 2"));
+
+    // Settle first intent: acquires and drops the "settle" NonReentrantGuard
+    client.settle_intent(&admin, &id1, &soroban_string(&env, "tx-001"));
+    assert_eq!(client.get_intent(&id1).status, PaymentStatus::Settled);
+
+    // Settle second intent in a separate call: must succeed without ProtocolError::ReentrantCall
+    client.settle_intent(&admin, &id2, &soroban_string(&env, "tx-002"));
+    assert_eq!(client.get_intent(&id2).status, PaymentStatus::Settled);
+}
+
+#[test]
+fn reentrancy_guard_allows_cancel_after_settle() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id1 = client.create_intent(
+        &payer,
+        &payee,
+        &1_000_i128,
+        &soroban_string(&env, "intent to settle"),
+    );
+    let id2 = client.create_intent(
+        &payer,
+        &payee,
+        &2_000_i128,
+        &soroban_string(&env, "intent to cancel"),
+    );
+
+    // Settle intent 1
+    client.settle_intent(&admin, &id1, &soroban_string(&env, "tx-settle"));
+    assert_eq!(client.get_intent(&id1).status, PaymentStatus::Settled);
+
+    // Cancel intent 2 after settle: must succeed cleanly without ReentrantCall
+    client.cancel_intent(&id2);
+    assert_eq!(client.get_intent(&id2).status, PaymentStatus::Cancelled);
+}
+
+#[test]
+fn mid_transition_panic_releases_guard_for_subsequent_calls() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id_panic =
+        client.create_intent(&payer, &payee, &1_000_i128, &soroban_string(&env, "will panic"));
+    let id_settle = client.create_intent(
+        &payer,
+        &payee,
+        &2_000_i128,
+        &soroban_string(&env, "will settle after panic"),
+    );
+    let id_cancel = client.create_intent(
+        &payer,
+        &payee,
+        &3_000_i128,
+        &soroban_string(&env, "will cancel after panic"),
+    );
+
+    // Trigger mid-transition panic: empty settlement reference fails require_non_empty
+    // after NonReentrantGuard::acquire is already held.
+    let panic_result = client.try_settle_intent(&admin, &id_panic, &soroban_string(&env, ""));
+    assert_eq!(
+        panic_result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(ProtocolError::InvalidInput as u32)))
+    );
+
+    // Subsequent fresh settle call must succeed without ProtocolError::ReentrantCall
+    client.settle_intent(&admin, &id_settle, &soroban_string(&env, "tx-valid"));
+    assert_eq!(client.get_intent(&id_settle).status, PaymentStatus::Settled);
+
+    // Subsequent fresh cancel call must also succeed without ProtocolError::ReentrantCall
+    client.cancel_intent(&id_cancel);
+    assert_eq!(client.get_intent(&id_cancel).status, PaymentStatus::Cancelled);
 }
 
 #[test]
