@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use lily_common::{PaymentStatus, PROTOCOL_VERSION};
+use lily_common::{PaymentStatus, ProtocolError, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::testutils::Ledger;
+use soroban_sdk::testutils::{Events, Ledger};
 use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{symbol_short, Address, IntoVal, Symbol, TryIntoVal};
 
 use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
@@ -255,6 +256,153 @@ fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
     // Payer tries to settle: signature would pass under mock_all_auths, but
     // the typed role check must fire first with ProtocolError::Unauthorized.
     client.settle_intent(&payer, &id, &soroban_string(&env, "tx-not-admin"));
+}
+
+#[test]
+fn two_step_admin_transfer_lifecycle() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+
+    // Prior to transfer, get_pending_admin returns None
+    assert_eq!(client.get_pending_admin(), None);
+
+    // Step 1: propose next_admin
+    client.transfer_admin(&next_admin);
+
+    // After propose: previous admin can still call set_fee_bps, and get_pending_admin returns Some(next_admin)
+    client.set_fee_bps(&100_u32);
+    assert_eq!(client.get_config().fee_bps, 100);
+    assert_eq!(client.get_config().admin, admin);
+    assert_eq!(client.get_pending_admin(), Some(next_admin.clone()));
+
+    // Verify "propose" event was emitted
+    let propose_events: Vec<_> = env
+        .events()
+        .all()
+        .iter()
+        .filter(|(contract, topics, _)| {
+            *contract == contract_id
+                && topics.get(0).map_or(false, |t| {
+                    let sym: Result<Symbol, _> = t.try_into_val(&env);
+                    sym == Ok(symbol_short!("propose"))
+                })
+        })
+        .collect();
+    assert_eq!(propose_events.len(), 1);
+
+    // Step 2: next_admin accepts
+    client.accept_admin();
+
+    // After accept: admin is updated, pending_admin is cleared (None)
+    assert_eq!(client.get_config().admin, next_admin);
+    assert_eq!(client.get_pending_admin(), None);
+
+    // Exactly one "admin" event was fired
+    let admin_events: Vec<_> = env
+        .events()
+        .all()
+        .iter()
+        .filter(|(contract, topics, _)| {
+            *contract == contract_id
+                && topics.get(0).map_or(false, |t| {
+                    let sym: Result<Symbol, _> = t.try_into_val(&env);
+                    sym == Ok(symbol_short!("admin"))
+                })
+        })
+        .collect();
+    assert_eq!(admin_events.len(), 1);
+    let (_, topics, payload) = &admin_events[0];
+    let topic0: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1: Address = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    let data: Address = payload.clone().try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("admin"));
+    assert_eq!(topic1, admin);
+    assert_eq!(data, next_admin);
+}
+
+// Typed error: ProtocolError::MissingRecord = 7.
+#[test]
+#[should_panic = "Error(Contract, #7)"]
+fn accept_admin_panics_missing_record_when_no_pending_admin() {
+    let (env, _admin, client) = bootstrap();
+    client.accept_admin();
+}
+
+#[test]
+#[should_panic = "Error(Contract, #7)"]
+fn later_accepts_panic_missing_record_after_transfer_completed() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.transfer_admin(&next_admin);
+    client.accept_admin();
+
+    // Calling accept_admin again after it was already accepted must panic MissingRecord
+    client.accept_admin();
+}
+
+#[test]
+#[should_panic]
+fn only_pending_admin_can_accept_and_old_admin_accepting_panics() {
+    let env = soroban_sdk::Env::default();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    // Initialize with admin auth
+    client
+        .mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "initialize",
+                args: (&admin, &treasury, &50_u32).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .initialize(&admin, &treasury, &50_u32);
+
+    // Propose next_admin with admin auth
+    client
+        .mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "transfer_admin",
+                args: (&next_admin,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .transfer_admin(&next_admin);
+
+    // Old admin attempts to accept (only next_admin can accept): must panic auth failure
+    client
+        .mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "accept_admin",
+                args: ().into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .accept_admin();
 }
 
 #[test]
