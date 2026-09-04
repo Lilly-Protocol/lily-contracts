@@ -286,3 +286,52 @@ fn rejects_get_intent_on_missing_record() {
     client.initialize(&admin, &treasury, &50_u32);
     client.get_intent(&999_u64);
 }
+
+#[test]
+fn admin_can_set_wallet_contract_and_emits_event() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let new_wallet = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.set_wallet(&new_wallet);
+    assert_eq!(client.get_wallet(), new_wallet);
+
+    let events = env.events().all();
+    let last_event = events.get_unchecked(events.len() - 1);
+    let topic0: soroban_sdk::Symbol = last_event.1.get_unchecked(0).try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("wallet"));
+    let topic1: Address = last_event.1.get_unchecked(1).try_into_val(&env).unwrap();
+    assert_eq!(topic1, admin);
+    let payload: Address = last_event.2.try_into_val(&env).unwrap();
+    assert_eq!(payload, new_wallet);
+}
+
+#[test]
+#[should_panic]
+fn non_admin_cannot_set_wallet() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let not_admin = test_address(&env);
+    let new_wallet = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &not_admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "set_wallet",
+            args: (&new_wallet,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.set_wallet(&new_wallet);
+}

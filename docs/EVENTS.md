@@ -28,6 +28,7 @@ This document lists every event emitted by the Lily Protocol contracts, grouped 
 | `("create", id)` | `PaymentIntent` | `create_intent(...)` | `id: u64`, `payer_agent: Address`, `payee_agent: Address`, `amount: i128`, `memo: String`, `settlement_reference: String`, `status: PaymentStatus` |
 | `("settle", id)` | `PaymentIntent` | `settle_intent(env, intent_id, settlement_reference)` | Intent after `status` is set to `Settled` and the settlement reference is recorded. |
 | `("cancel", id)` | `PaymentIntent` | `cancel_intent(env, intent_id)` | Intent after `status` is set to `Cancelled`. |
+| `("wallet", admin)` | `Address` | `set_wallet(env, wallet)` | The newly bound wallet contract address. |
 
 ## `contracts/wallet`
 
