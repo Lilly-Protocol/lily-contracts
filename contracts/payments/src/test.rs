@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use lily_common::{PaymentStatus, PROTOCOL_VERSION};
+use lily_common::{PaymentStatus, ProtocolError, MAX_BPS, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::testutils::Ledger;
+use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{symbol_short, Address, IntoVal, Symbol, TryIntoVal};
 
 use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
@@ -255,6 +256,186 @@ fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
     // Payer tries to settle: signature would pass under mock_all_auths, but
     // the typed role check must fire first with ProtocolError::Unauthorized.
     client.settle_intent(&payer, &id, &soroban_string(&env, "tx-not-admin"));
+}
+
+#[test]
+fn updates_fee_and_treasury_and_emits_events() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+
+    // 1. set_fee_bps updates get_config and emits exactly one fee event
+    client.set_fee_bps(&375_u32);
+    let config = client.get_config();
+    assert_eq!(config.fee_bps, 375);
+
+    let fee_events: Vec<_> = env
+        .events()
+        .all()
+        .iter()
+        .filter(|(contract, topics, _)| {
+            *contract == contract_id
+                && topics.get(0).map_or(false, |t| {
+                    let sym: Result<Symbol, _> = t.try_into_val(&env);
+                    sym == Ok(symbol_short!("fee"))
+                })
+        })
+        .collect();
+    assert_eq!(fee_events.len(), 1);
+    let (_, topics, payload) = &fee_events[0];
+    let topic0: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1: Address = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    let data: u32 = payload.clone().try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("fee"));
+    assert_eq!(topic1, admin);
+    assert_eq!(data, 375_u32);
+
+    // 2. set_treasury updates get_config and emits exactly one treasury event
+    client.set_treasury(&next_treasury);
+    let config_after = client.get_config();
+    assert_eq!(config_after.treasury, next_treasury);
+
+    let treasury_events: Vec<_> = env
+        .events()
+        .all()
+        .iter()
+        .filter(|(contract, topics, _)| {
+            *contract == contract_id
+                && topics.get(0).map_or(false, |t| {
+                    let sym: Result<Symbol, _> = t.try_into_val(&env);
+                    sym == Ok(symbol_short!("treasury"))
+                })
+        })
+        .collect();
+    assert_eq!(treasury_events.len(), 1);
+    let (_, topics, payload) = &treasury_events[0];
+    let topic0: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1: Address = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    let data: Address = payload.clone().try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("treasury"));
+    assert_eq!(topic1, admin);
+    assert_eq!(data, next_treasury);
+}
+
+// Typed validation error: ProtocolError::FeeBpsTooHigh = 5.
+#[test]
+#[should_panic = "Error(Contract, #5)"]
+fn rejects_set_fee_bps_above_max_with_typed_error() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.set_fee_bps(&(MAX_BPS + 1));
+}
+
+#[test]
+#[should_panic]
+fn non_admin_cannot_set_treasury() {
+    let env = soroban_sdk::Env::default();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let attacker = test_address(&env);
+    let new_treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client
+        .mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "initialize",
+                args: (&admin, &treasury, &50_u32).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .initialize(&admin, &treasury, &50_u32);
+
+    client
+        .mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &attacker,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_treasury",
+                args: (&new_treasury,).into_val(&env),
+                sub_invokes: &[],
+            },
+        }])
+        .set_treasury(&new_treasury);
+}
+
+#[test]
+fn non_admin_set_treasury_fails_and_does_not_change_config() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let attacker_treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+
+    // Clear mocked auths so admin auth is missing
+    env.set_auths(&[]);
+
+    let result = client.try_set_treasury(&attacker_treasury);
+    assert!(result.is_err());
+
+    // Restore mock auth to read config and assert unchanged
+    env.mock_all_auths();
+    let config = client.get_config();
+    assert_eq!(config.treasury, treasury);
+}
+
+#[test]
+fn transfer_admin_changes_admin_and_emits_event() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    client.transfer_admin(&next_admin);
+
+    let config = client.get_config();
+    assert_eq!(config.admin, next_admin);
+
+    let admin_events: Vec<_> = env
+        .events()
+        .all()
+        .iter()
+        .filter(|(contract, topics, _)| {
+            *contract == contract_id
+                && topics.get(0).map_or(false, |t| {
+                    let sym: Result<Symbol, _> = t.try_into_val(&env);
+                    sym == Ok(symbol_short!("admin"))
+                })
+        })
+        .collect();
+
+    assert_eq!(admin_events.len(), 1);
+    let (_, topics, payload) = &admin_events[0];
+    let topic0: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic1: Address = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    let data: Address = payload.clone().try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("admin"));
+    assert_eq!(topic1, admin);
+    assert_eq!(data, next_admin);
 }
 
 #[test]
