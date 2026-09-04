@@ -159,6 +159,10 @@ impl WalletContract {
         require_auth_or_error(&agent, &env);
 
         let mut binding = get_binding_internal(&env, &agent);
+        if binding.enabled == enabled {
+            return;
+        }
+
         binding.enabled = enabled;
         binding.revision = checked_inc(&env, binding.revision);
 
@@ -174,8 +178,12 @@ impl WalletContract {
         admin.require_auth();
 
         let mut binding = get_binding_internal(&env, &agent);
+        if !binding.enabled {
+            return;
+        }
+
         binding.enabled = false;
-        binding.revision += 1;
+        binding.revision = checked_inc(&env, binding.revision);
 
         env.storage().persistent().set(&DataKey::Binding(agent.clone()), &binding);
         bump_instance(&env);
