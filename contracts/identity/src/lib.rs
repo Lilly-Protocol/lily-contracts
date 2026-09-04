@@ -56,14 +56,15 @@ impl IdentityContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
-        require_auth_or_error(&admin, &env);
+        require_initial_admin(&env, &admin);
+
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);

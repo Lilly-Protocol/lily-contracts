@@ -5,8 +5,9 @@ use soroban_sdk::unwrap::UnwrapOptimized;
 use soroban_sdk::Address;
 
 use super::{AgentProfile, DataKey, IdentityContract, IdentityContractClient};
+use lily_common::ProtocolError;
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::{FromVal, IntoVal, Symbol, Val, Vec};
+use soroban_sdk::{Error, FromVal, IntoVal, Symbol, Val, Vec};
 
 #[test]
 fn data_key_encodings_are_stable() {
@@ -293,4 +294,44 @@ fn rejects_get_profile_on_unregistered_agent() {
 
     client.initialize(&admin);
     client.get_profile(&unknown_agent);
+}
+
+#[test]
+#[should_panic = "Error(Contract, #3)"]
+fn initialize_rejects_admin_not_pinned_at_deploy_time() {
+    let env = test_env();
+    let deployer = test_address(&env);
+    let attacker = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (deployer,));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&attacker);
+}
+
+#[test]
+fn initialize_unauthorized_admin_leaves_contract_uninitialized() {
+    let env = test_env();
+    let deployer = test_address(&env);
+    let attacker = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (deployer,));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    let res = client.try_initialize(&attacker);
+    assert_eq!(res, Err(Ok(Error::from_contract_error(ProtocolError::Unauthorized as u32))));
+    assert!(!client.is_initialized());
+}
+
+#[test]
+fn initialize_succeeds_for_pinned_deployer() {
+    let env = test_env();
+    let deployer = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (deployer.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    assert!(!client.is_initialized());
+    client.initialize(&deployer);
+    assert!(client.is_initialized());
 }
