@@ -188,3 +188,71 @@ fn admin_can_deactivate_wallet_binding() {
     assert!(!binding.enabled);
     assert_eq!(binding.revision, 1);
 }
+
+#[test]
+fn noop_set_enabled_does_not_bump_revision_or_emit_events() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let wallet = test_address(&env);
+
+    let contract_id = env.register(WalletContract, (admin.clone(),));
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+
+    let initial_binding = client.get_binding(&agent);
+    assert_eq!(initial_binding.revision, 0);
+    assert!(initial_binding.enabled);
+
+    let events_before = env.events().all().len();
+
+    // Calling set_enabled with true on an already-enabled binding is a no-op
+    client.set_enabled(&agent, &true);
+
+    let after_binding = client.get_binding(&agent);
+    assert_eq!(after_binding.revision, 0);
+    assert!(after_binding.enabled);
+    assert_eq!(env.events().all().len(), events_before);
+
+    // Real transition to false bumps revision by 1 and emits state event
+    client.set_enabled(&agent, &false);
+    let disabled_binding = client.get_binding(&agent);
+    assert_eq!(disabled_binding.revision, 1);
+    assert!(!disabled_binding.enabled);
+    assert_eq!(env.events().all().len(), events_before + 1);
+
+    // Another no-op set_enabled(false) emits no new event
+    client.set_enabled(&agent, &false);
+    assert_eq!(client.get_binding(&agent).revision, 1);
+    assert_eq!(env.events().all().len(), events_before + 1);
+}
+
+#[test]
+fn noop_admin_deactivate_does_not_bump_revision_or_emit_events() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let wallet = test_address(&env);
+
+    let contract_id = env.register(WalletContract, (admin.clone(),));
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.bind_wallet(&agent, &wallet, &symbol_short!("USDC"), &1_000_i128);
+
+    // Deactivate once
+    client.admin_deactivate(&agent);
+    let binding = client.get_binding(&agent);
+    assert_eq!(binding.revision, 1);
+    assert!(!binding.enabled);
+
+    let events_count = env.events().all().len();
+
+    // Deactivate again on already-disabled binding is a no-op
+    client.admin_deactivate(&agent);
+    let binding_after = client.get_binding(&agent);
+    assert_eq!(binding_after.revision, 1);
+    assert_eq!(env.events().all().len(), events_count);
+}
