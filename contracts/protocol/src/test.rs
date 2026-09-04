@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use super::{ProtocolConfig, ProtocolContract, ProtocolContractClient};
+use super::{SCHEMA_VERSION, ProtocolConfig, ProtocolContract, ProtocolContractClient};
 use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::{
@@ -195,4 +195,25 @@ fn rejects_set_fee_bps_above_max() {
 
     client.initialize(&admin, &treasury, &100_u32);
     client.set_fee_bps(&10_001_u32);
+}
+
+#[test]
+fn schema_version_matches_constant_after_initialize() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &250);
+    assert_eq!(client.schema_version(), SCHEMA_VERSION);
+}
+
+#[test]
+#[should_panic]
+fn rejects_schema_version_before_initialization() {
+    let env = test_env();
+    let contract_id = env.register(ProtocolContract, ());
+    let client = ProtocolContractClient::new(&env, &contract_id);
+    client.schema_version();
 }

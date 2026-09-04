@@ -6,7 +6,7 @@ use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::testutils::Ledger;
 use soroban_sdk::unwrap::UnwrapOptimized;
 
-use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
+use super::{SCHEMA_VERSION, PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
 fn bootstrap() -> (soroban_sdk::Env, soroban_sdk::Address, PaymentsContractClient<'static>) {
     let env = test_env();
@@ -285,4 +285,25 @@ fn rejects_get_intent_on_missing_record() {
 
     client.initialize(&admin, &treasury, &50_u32);
     client.get_intent(&999_u64);
+}
+
+#[test]
+fn payments_schema_version_matches_constant_after_initialize() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &50_u32);
+    assert_eq!(client.schema_version(), SCHEMA_VERSION);
+}
+
+#[test]
+#[should_panic]
+fn rejects_payments_schema_version_before_initialization() {
+    let env = test_env();
+    let contract_id = env.register(PaymentsContract, ());
+    let client = PaymentsContractClient::new(&env, &contract_id);
+    client.schema_version();
 }

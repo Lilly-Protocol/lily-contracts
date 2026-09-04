@@ -5,7 +5,7 @@ use soroban_sdk::symbol_short;
 use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
 use soroban_sdk::{Address, Env, IntoVal};
 
-use super::{WalletBinding, WalletContract, WalletContractClient};
+use super::{SCHEMA_VERSION, WalletBinding, WalletContract, WalletContractClient};
 use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::testutils::Events;
@@ -187,4 +187,24 @@ fn admin_can_deactivate_wallet_binding() {
     let binding = client.get_binding(&agent);
     assert!(!binding.enabled);
     assert_eq!(binding.revision, 1);
+}
+
+#[test]
+fn wallet_schema_version_matches_constant_after_initialize() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let contract_id = env.register(WalletContract, (admin.clone(),));
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    assert_eq!(client.schema_version(), SCHEMA_VERSION);
+}
+
+#[test]
+#[should_panic]
+fn rejects_wallet_schema_version_before_initialization() {
+    let env = test_env();
+    let contract_id = env.register(WalletContract, ());
+    let client = WalletContractClient::new(&env, &contract_id);
+    client.schema_version();
 }
