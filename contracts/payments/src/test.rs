@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use lily_common::{PaymentStatus, PROTOCOL_VERSION};
+use lily_common::{PaymentStatus, ProtocolError, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::testutils::Ledger;
+use soroban_sdk::testutils::{Events, Ledger};
 use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{symbol_short, TryIntoVal};
 
 use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
@@ -255,6 +256,74 @@ fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
     // Payer tries to settle: signature would pass under mock_all_auths, but
     // the typed role check must fire first with ProtocolError::Unauthorized.
     client.settle_intent(&payer, &id, &soroban_string(&env, "tx-not-admin"));
+}
+
+// Typed finality error: ProtocolError::PaymentAlreadyFinalized = 8 (issue #319).
+#[test]
+#[should_panic = "Error(Contract, #8)"]
+fn settle_rejects_already_settled_intent_with_typed_finalized() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(&payer, &payee, &5_000_i128, &soroban_string(&env, "settle fee"));
+
+    client.settle_intent(&admin, &id, &soroban_string(&env, "tx-0001"));
+    client.settle_intent(&admin, &id, &soroban_string(&env, "tx-0002"));
+}
+
+#[test]
+fn settling_already_settled_intent_is_rejected_and_preserves_reference_and_events() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &5_000_i128,
+        &soroban_string(&env, "settle agent service fee"),
+    );
+
+    let first_ref = soroban_string(&env, "tx-0001");
+    let second_ref = soroban_string(&env, "tx-0002");
+
+    // 1. First settlement succeeds and records first reference
+    client.settle_intent(&admin, &id, &first_ref);
+    let settled = client.get_intent(&id);
+    assert_eq!(settled.status, PaymentStatus::Settled);
+    assert_eq!(settled.settlement_reference, first_ref);
+
+    let count_settle_events = || {
+        env.events()
+            .all()
+            .iter()
+            .filter(|(_, topics, _)| {
+                topics.get(0).map_or(false, |t| {
+                    let sym: Result<soroban_sdk::Symbol, _> = t.try_into_val(&env);
+                    sym == Ok(symbol_short!("settle"))
+                })
+            })
+            .count()
+    };
+    assert_eq!(count_settle_events(), 1);
+
+    // 2. Second settlement attempt with a different reference raises PaymentAlreadyFinalized (error #8)
+    let result = client.try_settle_intent(&admin, &id, &second_ref);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ProtocolError::PaymentAlreadyFinalized as u32
+        )))
+    );
+
+    // 3. Stored settlement_reference is not overwritten
+    let current_intent = client.get_intent(&id);
+    assert_eq!(current_intent.status, PaymentStatus::Settled);
+    assert_eq!(current_intent.settlement_reference, first_ref);
+
+    // 4. No duplicate settle event is emitted for the second attempt
+    assert_eq!(count_settle_events(), 1);
 }
 
 #[test]
