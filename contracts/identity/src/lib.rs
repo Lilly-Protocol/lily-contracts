@@ -3,7 +3,8 @@
 //! Agent identity registry for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_auth_or_error, require_non_empty, ProtocolError,
+    bump_instance, checked_inc, require, require_auth_or_error, require_non_empty, ProtocolError,
+    PROTOCOL_VERSION,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -56,14 +57,13 @@ impl IdentityContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
-        admin.require_auth();
-
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
         require_auth_or_error(&admin, &env);
+        require_initial_admin(&env, &admin);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -73,6 +73,18 @@ impl IdentityContract {
     /// Return whether the contract has been initialized.
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
+    }
+
+    /// Return the shared protocol interface version.
+    #[must_use]
+    pub fn version(_env: Env) -> u32 {
+        PROTOCOL_VERSION
+    }
+
+    /// Return the current registry configuration.
+    #[must_use]
+    pub fn get_config(env: Env) -> IdentityConfig {
+        IdentityConfig { admin: get_admin(&env) }
     }
 
     /// Register a new agent profile controlled by a specific address.

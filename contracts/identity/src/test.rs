@@ -1,12 +1,17 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use soroban_sdk::unwrap::UnwrapOptimized;
-use soroban_sdk::Address;
 
-use super::{AgentProfile, DataKey, IdentityContract, IdentityContractClient};
+use super::{AgentProfile, DataKey, IdentityConfig, IdentityContract, IdentityContractClient};
+use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::{FromVal, IntoVal, Symbol, Val, Vec};
+use soroban_sdk::testutils::Events;
+use soroban_sdk::{FromVal, IntoVal, Symbol, TryFromVal, Val, Vec};
+
+fn event_has_topic(env: &soroban_sdk::Env, topics: &Vec<Val>, expected: &str) -> bool {
+    let expected = Symbol::new(env, expected);
+    topics.iter().any(|t| Symbol::try_from_val(env, &t).map_or(false, |s| s == expected))
+}
 
 #[test]
 fn data_key_encodings_are_stable() {
@@ -33,7 +38,7 @@ fn data_key_encodings_are_stable() {
 #[test]
 fn returns_protocol_version() {
     let env = test_env();
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (test_address(&env),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     assert_eq!(client.version(), PROTOCOL_VERSION);
@@ -44,13 +49,27 @@ fn initializes_and_exposes_config() {
     let env = test_env();
     let admin = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
 
     let config = client.get_config();
     assert_eq!(config, IdentityConfig { admin: admin.clone() });
+}
+
+// Rejects an admin that was not pinned at deploy time (issue #280).
+#[test]
+#[should_panic = "Error(Contract, #3)"]
+fn initialize_rejects_non_pinned_admin() {
+    let env = test_env();
+    let deployer = test_address(&env);
+    let attacker = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (deployer,));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&attacker);
 }
 
 #[test]
@@ -97,7 +116,7 @@ fn emits_both_events_when_metadata_and_controller_change() {
     let controller = test_address(&env);
     let new_controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -109,17 +128,17 @@ fn emits_both_events_when_metadata_and_controller_change() {
     );
 
     let events = env.events().all();
-    let metadata_events: Vec<_> = events
+    let metadata_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
-        .collect();
-    assert_eq!(metadata_events.len(), 1);
+        .count();
+    assert_eq!(metadata_count, 1);
 
-    let rotate_events: Vec<_> = events
+    let rotate_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
-        .collect();
-    assert_eq!(rotate_events.len(), 1);
+        .count();
+    assert_eq!(rotate_count, 1);
 }
 
 #[test]
@@ -129,7 +148,7 @@ fn emits_only_metadata_updated_when_controller_unchanged() {
     let agent = test_address(&env);
     let controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -138,17 +157,17 @@ fn emits_only_metadata_updated_when_controller_unchanged() {
     client.update_profile(&agent, &soroban_string(&env, "ipfs://profile-v2"), &None);
 
     let events = env.events().all();
-    let metadata_events: Vec<_> = events
+    let metadata_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
-        .collect();
-    assert_eq!(metadata_events.len(), 1);
+        .count();
+    assert_eq!(metadata_count, 1);
 
-    let rotate_events: Vec<_> = events
+    let rotate_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
-        .collect();
-    assert_eq!(rotate_events.len(), 0);
+        .count();
+    assert_eq!(rotate_count, 0);
 }
 
 #[test]
@@ -159,7 +178,7 @@ fn emits_only_controller_rotated_when_metadata_unchanged() {
     let controller = test_address(&env);
     let new_controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -172,17 +191,17 @@ fn emits_only_controller_rotated_when_metadata_unchanged() {
     );
 
     let events = env.events().all();
-    let metadata_events: Vec<_> = events
+    let metadata_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
-        .collect();
-    assert_eq!(metadata_events.len(), 0);
+        .count();
+    assert_eq!(metadata_count, 0);
 
-    let rotate_events: Vec<_> = events
+    let rotate_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
-        .collect();
-    assert_eq!(rotate_events.len(), 1);
+        .count();
+    assert_eq!(rotate_count, 1);
 }
 
 #[test]
@@ -192,7 +211,7 @@ fn emits_no_update_events_when_nothing_changes() {
     let agent = test_address(&env);
     let controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -200,17 +219,17 @@ fn emits_no_update_events_when_nothing_changes() {
     client.update_profile(&agent, &soroban_string(&env, "ipfs://profile-v1"), &None);
 
     let events = env.events().all();
-    let metadata_events: Vec<_> = events
+    let metadata_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "metadata_updated"))
-        .collect();
-    assert_eq!(metadata_events.len(), 0);
+        .count();
+    assert_eq!(metadata_count, 0);
 
-    let rotate_events: Vec<_> = events
+    let rotate_count = events
         .iter()
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
-        .collect();
-    assert_eq!(rotate_events.len(), 0);
+        .count();
+    assert_eq!(rotate_count, 0);
 }
 
 #[test]
@@ -237,7 +256,7 @@ fn get_profile_rejects_unregistered_agent() {
     let admin = test_address(&env);
     let agent = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -271,7 +290,7 @@ fn rejects_update_on_deactivated_profile() {
     let agent = test_address(&env);
     let controller = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
@@ -288,7 +307,7 @@ fn rejects_get_profile_on_unregistered_agent() {
     let admin = test_address(&env);
     let unknown_agent = test_address(&env);
 
-    let contract_id = env.register(IdentityContract, ());
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
