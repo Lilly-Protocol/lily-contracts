@@ -5,7 +5,7 @@ use soroban_sdk::symbol_short;
 use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
 use soroban_sdk::{Address, Env, IntoVal};
 
-use super::{WalletBinding, WalletContract, WalletContractClient};
+use super::{WalletConfig, WalletBinding, WalletContract, WalletContractClient};
 use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::testutils::Events;
@@ -187,4 +187,28 @@ fn admin_can_deactivate_wallet_binding() {
     let binding = client.get_binding(&agent);
     assert!(!binding.enabled);
     assert_eq!(binding.revision, 1);
+}
+
+#[test]
+fn initializes_and_publishes_typed_config_event() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let contract_id = env.register(WalletContract, (admin.clone(),));
+    let client = WalletContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
+    let event = events.get_unchecked(0);
+    assert_eq!(event.0, contract_id);
+
+    let topic0: soroban_sdk::Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("init"));
+
+    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
+    assert_eq!(topic1, admin);
+
+    let data: WalletConfig = event.2.try_into_val(&env).unwrap();
+    assert_eq!(data, WalletConfig { admin });
 }

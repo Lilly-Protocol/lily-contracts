@@ -9,6 +9,12 @@ use soroban_sdk::{
 };
 
 #[contract]
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WalletConfig {
+    pub admin: Address,
+}
+
 pub struct WalletContract;
 
 /// Wallet contract schema version.
@@ -66,7 +72,7 @@ impl WalletContract {
         env.storage().instance().set(&DataKey::SchemaVersion, &SCHEMA_VERSION);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
-        env.events().publish((symbol_short!("init"),), admin);
+        env.events().publish((symbol_short!("init"), admin.clone()), WalletConfig { admin });
     }
 
     /// Return whether the contract has been initialized.
