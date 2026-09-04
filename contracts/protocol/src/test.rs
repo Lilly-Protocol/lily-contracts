@@ -2,7 +2,7 @@
 #![cfg(test)]
 
 use super::{ProtocolConfig, ProtocolContract, ProtocolContractClient, SCHEMA_VERSION};
-use lily_common::{INSTANCE_BUMP_AMOUNT, INSTANCE_BUMP_THRESHOLD};
+use lily_common::{ProtocolError, INSTANCE_BUMP_AMOUNT, INSTANCE_BUMP_THRESHOLD};
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::{
     symbol_short,
@@ -338,4 +338,123 @@ fn get_pending_admin_bumps_instance_ttl() {
 
     let ttl_after = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert_eq!(ttl_after, INSTANCE_BUMP_AMOUNT);
+}
+
+#[test]
+fn transfer_admin_sets_pending_and_preserves_current_admin() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    assert_eq!(client.get_pending_admin(), None);
+
+    client.transfer_admin(&next_admin);
+
+    // After transfer_admin, get_pending_admin == Some(next) and get_config().admin is still the old admin
+    assert_eq!(client.get_pending_admin(), Some(next_admin));
+    assert_eq!(client.get_config().admin, admin);
+}
+
+#[test]
+#[should_panic]
+fn rejects_accept_admin_by_old_admin() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    client.transfer_admin(&next_admin);
+
+    // Old admin attempts to invoke accept_admin, but accept_admin requires pending_admin's auth
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "accept_admin",
+            args: vec![&env],
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.accept_admin();
+}
+
+#[test]
+fn old_admin_authority_holds_until_pending_admin_accepts() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    client.transfer_admin(&next_admin);
+
+    // Old admin authority holds until acceptance: old admin can still configure protocol
+    client.set_fee_bps(&200_u32);
+    assert_eq!(client.get_config().fee_bps, 200);
+
+    // Pending admin's accept flips get_config().admin
+    client.accept_admin();
+    assert_eq!(client.get_config().admin, next_admin);
+
+    // New admin now holds authority
+    client.set_fee_bps(&300_u32);
+    assert_eq!(client.get_config().fee_bps, 300);
+}
+
+#[test]
+fn second_accept_admin_panics_missing_record() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    client.transfer_admin(&next_admin);
+
+    // First accept succeeds
+    client.accept_admin();
+    assert_eq!(client.get_config().admin, next_admin);
+
+    // No pending key remains in storage
+    assert_eq!(client.get_pending_admin(), None);
+
+    // A second accept_admin panics with ProtocolError::MissingRecord
+    let result = client.try_accept_admin();
+    assert_eq!(result, Err(Ok(ProtocolError::MissingRecord.into())));
+}
+
+#[test]
+#[should_panic]
+fn second_accept_admin_panics() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let next_admin = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &100_u32);
+    client.transfer_admin(&next_admin);
+    client.accept_admin();
+
+    assert_eq!(client.get_pending_admin(), None);
+    // Direct invocation panics
+    client.accept_admin();
 }
