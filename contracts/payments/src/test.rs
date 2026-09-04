@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use lily_common::{PaymentStatus, PROTOCOL_VERSION};
+use lily_common::{PaymentStatus, ProtocolError, PROTOCOL_VERSION};
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::testutils::Ledger;
+use soroban_sdk::testutils::{Events, Ledger};
 use soroban_sdk::unwrap::UnwrapOptimized;
+use soroban_sdk::{symbol_short, Symbol, TryIntoVal};
 
 use super::{PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
@@ -255,6 +256,135 @@ fn settle_rejects_non_admin_caller_with_typed_unauthorized() {
     // Payer tries to settle: signature would pass under mock_all_auths, but
     // the typed role check must fire first with ProtocolError::Unauthorized.
     client.settle_intent(&payer, &id, &soroban_string(&env, "tx-not-admin"));
+}
+
+#[test]
+fn settle_event_carries_pending_prior_status_and_settled_intent_payload() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &5_000_i128,
+        &soroban_string(&env, "settle agent service fee"),
+    );
+
+    let settle_ref = soroban_string(&env, "tx-settle-001");
+    client.settle_intent(&admin, &id, &settle_ref);
+    let settled = client.get_intent(&id);
+
+    let events = env.events().all();
+    let settle_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| {
+            topics.get(0).map_or(false, |t| {
+                let sym: Result<Symbol, _> = t.try_into_val(&env);
+                sym == Ok(symbol_short!("settle"))
+            })
+        })
+        .collect();
+
+    assert_eq!(settle_events.len(), 1);
+    let (_, topics, payload) = &settle_events[0];
+
+    // Topic 0: "settle"
+    let topic0: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("settle"));
+
+    // Topic 1: intent_id
+    let topic1: u64 = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic1, id);
+
+    // Topic 2: prior status symbol ("pending")
+    let topic2: Symbol = topics.get(2).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic2, symbol_short!("pending"));
+
+    // Payload: post-transition PaymentIntent
+    let event_intent: PaymentIntent = payload.clone().try_into_val(&env).unwrap();
+    assert_eq!(event_intent, settled);
+    assert_eq!(event_intent.status, PaymentStatus::Settled);
+    assert_eq!(event_intent.settlement_reference, settle_ref);
+}
+
+#[test]
+fn cancel_event_carries_pending_prior_status_and_cancelled_intent_payload() {
+    let (env, _admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &5_000_i128,
+        &soroban_string(&env, "cancel agent service fee"),
+    );
+
+    client.cancel_intent(&id);
+    let cancelled = client.get_intent(&id);
+
+    let events = env.events().all();
+    let cancel_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| {
+            topics.get(0).map_or(false, |t| {
+                let sym: Result<Symbol, _> = t.try_into_val(&env);
+                sym == Ok(symbol_short!("cancel"))
+            })
+        })
+        .collect();
+
+    assert_eq!(cancel_events.len(), 1);
+    let (_, topics, payload) = &cancel_events[0];
+
+    // Topic 0: "cancel"
+    let topic0: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic0, symbol_short!("cancel"));
+
+    // Topic 1: intent_id
+    let topic1: u64 = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic1, id);
+
+    // Topic 2: prior status symbol ("pending")
+    let topic2: Symbol = topics.get(2).unwrap().try_into_val(&env).unwrap();
+    assert_eq!(topic2, symbol_short!("pending"));
+
+    // Payload: post-transition PaymentIntent
+    let event_intent: PaymentIntent = payload.clone().try_into_val(&env).unwrap();
+    assert_eq!(event_intent, cancelled);
+    assert_eq!(event_intent.status, PaymentStatus::Cancelled);
+}
+
+#[test]
+fn failed_finalization_emits_no_stray_events() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &5_000_i128,
+        &soroban_string(&env, "cancel before settle"),
+    );
+
+    // Cancel the intent cleanly
+    client.cancel_intent(&id);
+    let events_count_after_cancel = env.events().all().len();
+
+    // Settle-after-cancel attempt fails with PaymentAlreadyFinalized (error #8)
+    let result = client.try_settle_intent(&admin, &id, &soroban_string(&env, "tx-stray"));
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ProtocolError::PaymentAlreadyFinalized as u32
+        )))
+    );
+
+    // No stray events are emitted for the failed settlement attempt
+    let events_count_after_failed_settle = env.events().all().len();
+    assert_eq!(events_count_after_failed_settle, events_count_after_cancel);
 }
 
 #[test]
