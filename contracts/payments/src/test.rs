@@ -286,3 +286,41 @@ fn rejects_get_intent_on_missing_record() {
     client.initialize(&admin, &treasury, &50_u32);
     client.get_intent(&999_u64);
 }
+#[test]
+#[should_panic = "Error(Contract, #1)"]
+fn rejects_empty_settlement_reference() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &5_000_i128,
+        &soroban_string(&env, "pending intent"),
+    );
+
+    client.settle_intent(&admin, &id, &soroban_string(&env, ""));
+}
+
+#[test]
+#[should_panic = "Error(Contract, #8)"]
+fn rejects_double_settlement() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id = client.create_intent(
+        &payer,
+        &payee,
+        &5_000_i128,
+        &soroban_string(&env, "settle twice"),
+    );
+
+    client.settle_intent(&admin, &id, &soroban_string(&env, "tx-first-settle"));
+    let settled = client.get_intent(&id);
+    assert_eq!(settled.status, PaymentStatus::Settled);
+    assert_eq!(settled.settlement_reference, soroban_string(&env, "tx-first-settle"));
+
+    client.settle_intent(&admin, &id, &soroban_string(&env, "tx-second-settle"));
+}
