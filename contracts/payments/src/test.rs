@@ -324,3 +324,44 @@ fn rejects_double_settlement() {
 
     client.settle_intent(&admin, &id, &soroban_string(&env, "tx-second-settle"));
 }
+
+#[test]
+#[should_panic = "Error(Contract, #3)"]
+fn initialize_rejects_non_pinned_admin_in_payments() {
+    let env = test_env();
+    let pinned_admin = test_address(&env);
+    let other_admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(PaymentsContract, (pinned_admin.clone(),));
+    let client = PaymentsContractClient::new(&env, &contract_id);
+
+    client.initialize(&other_admin, &treasury, &50_u32);
+}
+
+#[test]
+fn non_reentrant_guard_lifecycle_in_payments() {
+    let (env, admin, client) = bootstrap();
+    let payer = test_address(&env);
+    let payee = test_address(&env);
+
+    let id1 = client.create_intent(
+        &payer,
+        &payee,
+        &1_000_i128,
+        &soroban_string(&env, "intent 1"),
+    );
+    let id2 = client.create_intent(
+        &payer,
+        &payee,
+        &2_000_i128,
+        &soroban_string(&env, "intent 2"),
+    );
+
+    // Sequential settlement calls succeed, proving the NonReentrantGuard releases cleanly
+    client.settle_intent(&admin, &id1, &soroban_string(&env, "tx-1"));
+    assert_eq!(client.get_intent(&id1).status, PaymentStatus::Settled);
+
+    client.settle_intent(&admin, &id2, &soroban_string(&env, "tx-2"));
+    assert_eq!(client.get_intent(&id2).status, PaymentStatus::Settled);
+}
