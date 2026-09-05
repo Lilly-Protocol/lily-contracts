@@ -5,8 +5,9 @@ use super::{ProtocolConfig, ProtocolContract, ProtocolContractClient};
 use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
 use soroban_sdk::{
+    symbol_short,
     xdr::{ScErrorCode, ScErrorType},
-    Error,
+    Address, Error, TryIntoVal,
 };
 
 #[test]
@@ -92,8 +93,6 @@ fn rejects_reinitialization() {
 #[test]
 #[should_panic]
 fn get_config_before_initialize_panics_not_initialized() {
-    // ensure_initialized panics with ProtocolError::NotInitialized via panic_with_error
-    // when DataKey::Initialized is absent (lily_common::require -> panic_with_error!).
     let env = test_env();
     let contract_id = env.register(ProtocolContract, ());
     let client = ProtocolContractClient::new(&env, &contract_id);
@@ -195,4 +194,19 @@ fn rejects_set_fee_bps_above_max() {
 
     client.initialize(&admin, &treasury, &100_u32);
     client.set_fee_bps(&10_001_u32);
+}
+
+#[test]
+#[should_panic = "Error(Contract, #3)"]
+fn initialize_rejects_non_pinned_admin() {
+    let env = test_env();
+    let pinned_admin = test_address(&env);
+    let other_admin = test_address(&env);
+    let treasury = test_address(&env);
+
+    let contract_id = env.register(ProtocolContract, (pinned_admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    // Initializing with an address different than the deployer-pinned admin must fail with Unauthorized (#3)
+    client.initialize(&other_admin, &treasury, &250_u32);
 }
