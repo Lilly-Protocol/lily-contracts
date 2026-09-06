@@ -70,6 +70,7 @@ enum DataKey {
     Intent(u64),
     PinnedAdmin,
     PayerIntents(Address),
+    PendingAdmin,
 }
 
 fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
@@ -77,7 +78,6 @@ fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
         PaymentStatus::Pending => symbol_short!("pending"),
         PaymentStatus::Settled => symbol_short!("settled"),
         PaymentStatus::Cancelled => symbol_short!("cancelled"),
-        _ => symbol_short!("unknown"),
     }
 }
 
@@ -121,6 +121,30 @@ impl PaymentsContract {
             wallet,
         };
         env.events().publish((symbol_short!("init"), admin), config);
+    }
+
+    /// Update the bound wallet contract address.
+    pub fn set_wallet(env: Env, wallet: Address) {
+        ensure_initialized(&env);
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Wallet, &wallet);
+        bump_instance(&env);
+
+        env.events().publish((symbol_short!("wallet"), admin), wallet);
+    }
+
+    /// Return the bound wallet contract address.
+    pub fn get_wallet(env: Env) -> Address {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage()
+            .instance()
+            .get(&DataKey::Wallet)
+            .unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
+            })
     }
 
     /// Return whether the contract has been initialized.
@@ -292,16 +316,45 @@ impl PaymentsContract {
         env.events().publish((symbol_short!("treasury"), admin), treasury);
     }
 
-    /// Transfer payments admin authority.
+    /// Propose a new payments admin (step 1 of two-step transfer).
     pub fn transfer_admin(env: Env, new_admin: Address) {
         ensure_initialized(&env);
 
         let admin = get_admin(&env);
         admin.require_auth();
 
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
         bump_instance(&env);
-        env.events().publish((symbol_short!("admin"), admin), new_admin);
+        env.events().publish((symbol_short!("propose"), admin), new_admin);
+    }
+
+    /// Accept payments admin authority as the proposed pending admin (step 2 of two-step transfer).
+    pub fn accept_admin(env: Env) {
+        ensure_initialized(&env);
+
+        require(
+            &env,
+            env.storage().instance().has(&DataKey::PendingAdmin),
+            ProtocolError::MissingRecord,
+        );
+
+        let pending_admin: Address =
+            env.storage().instance().get(&DataKey::PendingAdmin).unwrap_optimized();
+        pending_admin.require_auth();
+
+        let old_admin = get_admin(&env);
+        env.storage().instance().set(&DataKey::Admin, &pending_admin);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        bump_instance(&env);
+        env.events().publish((symbol_short!("admin"), old_admin), pending_admin);
+    }
+
+    /// Read the currently proposed pending admin, if any.
+    #[must_use]
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage().instance().get(&DataKey::PendingAdmin)
     }
 
     /// Read an individual payment intent.

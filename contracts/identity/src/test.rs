@@ -6,7 +6,8 @@ use soroban_sdk::Address;
 
 use super::{AgentProfile, DataKey, IdentityContract, IdentityContractClient};
 use lily_test_support::{soroban_string, test_address, test_env};
-use soroban_sdk::{FromVal, IntoVal, Symbol, Val, Vec};
+use soroban_sdk::testutils::{Events, MockAuth, MockAuthInvoke};
+use soroban_sdk::{symbol_short, FromVal, IntoVal, Symbol, TryIntoVal, Val, Vec};
 
 #[test]
 fn data_key_encodings_are_stable() {
@@ -211,6 +212,51 @@ fn emits_no_update_events_when_nothing_changes() {
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
         .collect();
     assert_eq!(rotate_events.len(), 0);
+
+    let profile = client.get_profile(&agent);
+    assert_eq!(profile.revision, 0);
+}
+
+#[test]
+fn update_profile_with_identical_controller_is_noop() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile-v1"));
+
+    let initial = client.get_profile(&agent);
+    assert_eq!(initial.revision, 0);
+
+    // Calling update_profile with identical URI and existing controller in Some is a no-op.
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v1"),
+        &Some(controller.clone()),
+    );
+
+    let unchanged = client.get_profile(&agent);
+    assert_eq!(unchanged.revision, 0);
+    assert_eq!(unchanged.controller, controller);
+    assert_eq!(unchanged.metadata_uri, soroban_string(&env, "ipfs://profile-v1"));
+
+    // Verify a genuine change still bumps revision to 1 and updates storage.
+    let new_controller = test_address(&env);
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v2"),
+        &Some(new_controller.clone()),
+    );
+
+    let updated = client.get_profile(&agent);
+    assert_eq!(updated.revision, 1);
+    assert_eq!(updated.controller, new_controller);
+    assert_eq!(updated.metadata_uri, soroban_string(&env, "ipfs://profile-v2"));
 }
 
 #[test]
@@ -293,4 +339,28 @@ fn rejects_get_profile_on_unregistered_agent() {
 
     client.initialize(&admin);
     client.get_profile(&unknown_agent);
+}
+
+#[test]
+fn get_profile_opt_returns_none_for_unregistered_and_some_for_active_and_deactivated() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    assert_eq!(client.get_profile_opt(&agent), None);
+
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://meta"));
+    let profile = client.get_profile_opt(&agent);
+    assert!(profile.is_some());
+    assert!(profile.unwrap().active);
+
+    client.deactivate(&agent);
+    let deactivated = client.get_profile_opt(&agent);
+    assert!(deactivated.is_some());
+    assert!(!deactivated.unwrap().active);
 }

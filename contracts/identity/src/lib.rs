@@ -115,6 +115,11 @@ impl IdentityContract {
         let controller_changed =
             new_controller.as_ref().is_some_and(|next| next != &profile.controller);
 
+        if !metadata_changed && !controller_changed {
+            bump_instance(&env);
+            return;
+        }
+
         profile.metadata_uri = metadata_uri;
         if let Some(next_controller) = new_controller {
             profile.controller = next_controller;
