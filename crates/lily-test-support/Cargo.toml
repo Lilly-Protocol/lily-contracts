@@ -1,5 +1,8 @@
 [package]
 name = "lily-test-support"
+description = "Test helpers for Lily Protocol Soroban contracts: environments, synthetic addresses and strings."
+keywords.workspace = true
+categories.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,5 +1,8 @@
 [package]
 name = "protocol"
+description = "Global Lily Protocol configuration contract: fee, treasury and admin state on Soroban."
+keywords.workspace = true
+categories.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +23,7 @@ lily-common = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+payments = { path = "../payments" }
 
 [lints]
 workspace = true
