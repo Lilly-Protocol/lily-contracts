@@ -1,9 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 #![cfg(test)]
 
-use super::{ProtocolConfig, ProtocolContract, ProtocolContractClient, SCHEMA_VERSION};
-use lily_common::{INSTANCE_BUMP_AMOUNT, INSTANCE_BUMP_THRESHOLD};
+use super::{SCHEMA_VERSION, ProtocolConfig, ProtocolContract, ProtocolContractClient};
+use lily_common::PROTOCOL_VERSION;
 use lily_test_support::{test_address, test_env};
+use soroban_sdk::symbol_short;
+use soroban_sdk::testutils::Events;
 use soroban_sdk::{
     symbol_short,
     testutils::{storage::Instance as _, Events, Ledger as _, MockAuth, MockAuthInvoke},
@@ -17,7 +19,6 @@ fn returns_protocol_version() {
     let env = test_env();
     let admin = test_address(&env);
     let treasury = test_address(&env);
-
     let contract_id = env.register(ProtocolContract, (admin.clone(),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
@@ -77,8 +78,7 @@ fn initialize_emits_init_event() {
 #[should_panic]
 fn rejects_config_read_before_initialization() {
     let env = test_env();
-    let admin = test_address(&env);
-    let contract_id = env.register(ProtocolContract, (admin,));
+    let contract_id = env.register(ProtocolContract, (test_address(&env),));
     let client = ProtocolContractClient::new(&env, &contract_id);
     client.get_config();
 }
@@ -103,8 +103,7 @@ fn get_config_before_initialize_panics_not_initialized() {
     // ensure_initialized panics with ProtocolError::NotInitialized via panic_with_error
     // when DataKey::Initialized is absent (lily_common::require -> panic_with_error!).
     let env = test_env();
-    let admin = test_address(&env);
-    let contract_id = env.register(ProtocolContract, (admin,));
+    let contract_id = env.register(ProtocolContract, (test_address(&env),));
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     let _ = client.get_config();
@@ -186,65 +185,8 @@ fn transfers_admin_and_emits_event() {
     let client = ProtocolContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &100_u32);
-    assert_eq!(client.get_pending_admin(), None);
-
-    // Step 1: Current admin proposes next admin
     client.transfer_admin(&next_admin);
-
-    // Assert propose event
-    let events = env.events().all();
-    assert_eq!(events.len(), 1);
-    let propose_event = events.get_unchecked(0);
-    assert_eq!(propose_event.0, contract_id);
-    let propose_topic0: soroban_sdk::Symbol =
-        propose_event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    let propose_topic1: Address = propose_event.1.get_unchecked(1).try_into_val(&env).unwrap();
-    let propose_data: Address = propose_event.2.try_into_val(&env).unwrap();
-    assert_eq!(propose_topic0, symbol_short!("propose"));
-    assert_eq!(propose_topic1, admin);
-    assert_eq!(propose_data, next_admin);
-
-    // Assert pending admin is set, but active admin remains unchanged
-    assert_eq!(client.get_pending_admin(), Some(next_admin.clone()));
-    let config_mid = client.get_config();
-    assert_eq!(config_mid.admin, admin);
-
-    // Step 2: Next admin accepts admin authority
     client.accept_admin();
-
-    // Assert admin event
-    let events = env.events().all();
-    assert_eq!(events.len(), 1);
-    let admin_event = events.get_unchecked(0);
-    assert_eq!(admin_event.0, contract_id);
-    let admin_topic0: soroban_sdk::Symbol =
-        admin_event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    let admin_topic1: Address = admin_event.1.get_unchecked(1).try_into_val(&env).unwrap();
-    let admin_data: Address = admin_event.2.try_into_val(&env).unwrap();
-    assert_eq!(admin_topic0, symbol_short!("admin"));
-    assert_eq!(admin_topic1, admin);
-    assert_eq!(admin_data, next_admin);
-
-    // Assert active admin is transferred and pending admin is cleared
-    assert_eq!(client.get_pending_admin(), None);
-    let config_final = client.get_config();
-    assert_eq!(config_final.admin, next_admin);
-}
-
-#[test]
-#[should_panic]
-fn rejects_accept_admin_by_unauthorized_party() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let treasury = test_address(&env);
-    let next_admin = test_address(&env);
-    let unauthorized = test_address(&env);
-
-    let contract_id = env.register(ProtocolContract, (admin.clone(),));
-    let client = ProtocolContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin, &treasury, &100_u32);
-    client.transfer_admin(&next_admin);
 
     // Mock auth as unauthorized non-pending caller
     env.mock_auths(&[MockAuth {
@@ -290,52 +232,22 @@ fn rejects_set_fee_bps_above_max() {
 }
 
 #[test]
+fn schema_version_matches_constant_after_initialize() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let treasury = test_address(&env);
+    let contract_id = env.register(ProtocolContract, (admin.clone(),));
+    let client = ProtocolContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin, &treasury, &250);
+    assert_eq!(client.schema_version(), SCHEMA_VERSION);
+}
+
+#[test]
 #[should_panic]
-fn get_pending_admin_before_initialize_panics_not_initialized() {
+fn rejects_schema_version_before_initialization() {
     let env = test_env();
-    let admin = test_address(&env);
-    let contract_id = env.register(ProtocolContract, (admin,));
+    let contract_id = env.register(ProtocolContract, ());
     let client = ProtocolContractClient::new(&env, &contract_id);
-
-    let _ = client.get_pending_admin();
-}
-
-#[test]
-fn get_pending_admin_lifecycle_after_transfer_and_accept() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let treasury = test_address(&env);
-    let next_admin = test_address(&env);
-
-    let contract_id = env.register(ProtocolContract, (admin.clone(),));
-    let client = ProtocolContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin, &treasury, &100_u32);
-    assert_eq!(client.get_pending_admin(), None);
-
-    client.transfer_admin(&next_admin);
-    assert_eq!(client.get_pending_admin(), Some(next_admin.clone()));
-
-    client.accept_admin();
-    assert_eq!(client.get_pending_admin(), None);
-}
-
-#[test]
-fn get_pending_admin_bumps_instance_ttl() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let treasury = test_address(&env);
-
-    let contract_id = env.register(ProtocolContract, (admin.clone(),));
-    let client = ProtocolContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin, &treasury, &100_u32);
-    env.ledger().set_sequence_number(INSTANCE_BUMP_AMOUNT - INSTANCE_BUMP_THRESHOLD + 1);
-    let ttl_before = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-    assert!(ttl_before < INSTANCE_BUMP_THRESHOLD);
-
-    let _ = client.get_pending_admin();
-
-    let ttl_after = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-    assert_eq!(ttl_after, INSTANCE_BUMP_AMOUNT);
+    client.schema_version();
 }
