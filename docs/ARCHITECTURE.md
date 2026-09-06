@@ -6,7 +6,7 @@ This document describes the high-level storage, durability, and authorization de
 
 Soroban provides two storage kinds that the contracts use deliberately:
 
-- **Instance storage** (`env.storage().instance()`): small, frequently-accessed state that is tied to the contract deployment. Used for global config, admin addresses, and one-time initialization flags. Bumped on every entrypoint call to keep the instance alive.
+- **Instance storage** (`env.storage().instance()`): small, frequently-accessed state that is tied to the contract deployment. Used for global config, admin addresses, and one-time initialization flags. Bumped on most entrypoint calls to keep the instance alive.
 - **Persistent storage** (`env.storage().persistent()`): per-entity state that must survive for the lifetime of the protocol. Used for profiles, intents, and wallet bindings.
 
 Both kinds are keyed by typed `DataKey` enums local to each contract crate. There is no shared `DataKey` across contracts.
@@ -28,10 +28,11 @@ Persistent storage entries do not currently call `extend_ttl` explicitly. In a p
 
 Every contract follows the same initialization pattern:
 
-1. Check that `DataKey::Initialized` is not already set.
-2. Require auth from the actor that will become the admin.
-3. Write initial config and set `DataKey::Initialized = true`.
-4. Emit an `init` event.
+1. Pin the initial admin at deployment in `__constructor` under `DataKey::PinnedAdmin`.
+2. In `initialize`, verify that `DataKey::Initialized` is not set and caller matches `PinnedAdmin`.
+3. Require auth from the actor that will become the admin.
+4. Write initial config, schema version, and set `DataKey::Initialized = true`.
+5. Emit an `init` event.
 
 Re-initialization is rejected with `ProtocolError::AlreadyInitialized`.
 
@@ -39,9 +40,9 @@ Re-initialization is rejected with `ProtocolError::AlreadyInitialized`.
 
 Three categories of actors appear across the contracts:
 
-- **Admin**: Set at initialization. Can change global config, transfer admin rights, and perform privileged actions such as deactivating profiles or settling payment intents.
+- **Admin**: Set at initialization (pinned during deployment). Can change global config, transfer admin rights, and perform privileged actions such as deactivating profiles, emergency deactivating wallet bindings, or settling payment intents.
 - **Self-authorized actor**: The agent or payer that owns a specific record. Must sign operations that affect their own profile, wallet binding, or payment intent.
-- **Dual authorization**: Some operations require both the agent and a related party to sign. For example, `wallet::bind_wallet` requires auth from both `agent` and `wallet`.
+- **Dual authorization**: Some operations require both the agent and a related party to sign. For example, `wallet::bind_wallet` and `wallet::rebind_wallet` require auth from both `agent` and `wallet`.
 
 Auth is always explicit via `Address::require_auth()`; there are no implicit or delegated authorization paths.
 
@@ -58,17 +59,30 @@ Global protocol configuration.
 | `Admin` | `Address` | Instance | Protocol admin address. |
 | `PendingAdmin` | `Address` | Instance | Pending admin address during two-step admin transfer. |
 | `Treasury` | `Address` | Instance | Treasury address for fee collection. |
-| `FeeBps` | `u32` | Instance | Fee in basis points. |
+| `FeeBps` | `u32` | Instance | Active protocol fee in basis points. |
+| `SchemaVersion` | `u32` | Instance | Protocol contract schema version. |
 | `Initialized` | `bool` | Instance | One-time initialization flag. |
 | `PinnedAdmin` | `Address` | Instance | Initial admin address pinned at deployment in `__constructor`. |
 | `SchemaVersion` | `u32` | Instance | Protocol contract schema version. |
 
 ### Admin functions
 
-- `initialize`
-- `set_fee_bps`
-- `set_treasury`
-- `transfer_admin`
+- `initialize` (initial admin signs)
+- `set_fee_bps` (admin signs)
+- `set_treasury` (admin signs)
+- `transfer_admin` (admin signs)
+
+### Self-authorized / Pending admin functions
+
+- `accept_admin` (pending admin signs)
+
+### Public / View functions
+
+- `__constructor`
+- `is_initialized`
+- `schema_version`
+- `get_config`
+- `get_pending_admin`
 
 ### Pending-admin functions
 
@@ -91,6 +105,7 @@ Agent identity registry.
 
 | Key | Type | Durability | Description |
 |---|---|---|---|
+| `PinnedAdmin` | `Address` | Instance | Deployer-pinned initial admin address. |
 | `Admin` | `Address` | Instance | Registry admin address. |
 | `Initialized` | `bool` | Instance | One-time initialization flag. |
 | `Profile(Address)` | `AgentProfile` | Persistent | Per-agent profile record. |
@@ -98,8 +113,9 @@ Agent identity registry.
 
 ### Admin functions
 
-- `initialize`
-- `deactivate`
+- `initialize` (initial admin signs)
+- `deactivate` (admin signs)
+- `reactivate` (admin signs)
 
 ### Self-authorized functions
 
@@ -109,6 +125,13 @@ Agent identity registry.
 
 ### View functions
 
+- `is_initialized`
+- `get_profile`
+- `get_profile_opt`
+
+### Public / View functions
+
+- `__constructor`
 - `is_initialized`
 - `get_profile`
 - `get_profile_opt`
@@ -123,7 +146,9 @@ Wallet policy registry.
 
 | Key | Type | Durability | Description |
 |---|---|---|---|
+| `PinnedAdmin` | `Address` | Instance | Deployer-pinned initial admin address. |
 | `Admin` | `Address` | Instance | Wallet registry admin address. |
+| `SchemaVersion` | `u32` | Instance | Wallet contract schema version. |
 | `Initialized` | `bool` | Instance | One-time initialization flag. |
 | `SchemaVersion` | `u32` | Instance | Wallet contract schema version. |
 | `Binding(Address)` | `WalletBinding` | Persistent | Per-agent wallet binding configuration. |
@@ -160,6 +185,7 @@ Payment intent and settlement.
 
 | Key | Type | Durability | Description |
 |---|---|---|---|
+| `PinnedAdmin` | `Address` | Instance | Deployer-pinned initial admin address. |
 | `Admin` | `Address` | Instance | Settlement admin address. |
 | `Treasury` | `Address` | Instance | Treasury address for fee collection. |
 | `FeeBps` | `u32` | Instance | Fee in basis points. |
@@ -181,8 +207,18 @@ Payment intent and settlement.
 
 ### Self-authorized functions
 
-- `create_intent` (payer signs)
-- `cancel_intent` (payer signs)
+- `create_intent` (payer agent signs)
+- `cancel_intent` (payer agent signs)
+
+### Public / View functions
+
+- `__constructor`
+- `is_initialized`
+- `schema_version`
+- `get_config`
+- `get_next_intent_id`
+- `get_intent`
+- `get_intent_opt`
 
 ### View functions
 
@@ -210,5 +246,5 @@ Test-only helpers; no runtime storage.
 
 ## Versioning
 
-- Instance storage is versioned implicitly by the contract wasm hash.
-- A future upgrade path should introduce an explicit `StorageVersion` key; see `docs/UPGRADABILITY.md`.
+- Instance storage is versioned explicitly via `DataKey::SchemaVersion` where supported, and implicitly by the contract wasm hash.
+- A future upgrade path should expand schema migrations across all contracts; see `docs/UPGRADABILITY.md`.
