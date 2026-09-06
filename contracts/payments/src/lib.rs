@@ -75,14 +75,6 @@ enum DataKey {
     PendingAdmin,
 }
 
-fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
-    match status {
-        PaymentStatus::Pending => symbol_short!("pending"),
-        PaymentStatus::Settled => symbol_short!("settled"),
-        PaymentStatus::Cancelled => symbol_short!("cancelled"),
-    }
-}
-
 #[contractimpl]
 impl PaymentsContract {
     /// Capture the intended initial admin at deploy time.
