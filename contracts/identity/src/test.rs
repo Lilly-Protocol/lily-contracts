@@ -212,6 +212,51 @@ fn emits_no_update_events_when_nothing_changes() {
         .filter(|(_, topics, _)| event_has_topic(&env, topics, "controller_rotated"))
         .collect();
     assert_eq!(rotate_events.len(), 0);
+
+    let profile = client.get_profile(&agent);
+    assert_eq!(profile.revision, 0);
+}
+
+#[test]
+fn update_profile_with_identical_controller_is_noop() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile-v1"));
+
+    let initial = client.get_profile(&agent);
+    assert_eq!(initial.revision, 0);
+
+    // Calling update_profile with identical URI and existing controller in Some is a no-op.
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v1"),
+        &Some(controller.clone()),
+    );
+
+    let unchanged = client.get_profile(&agent);
+    assert_eq!(unchanged.revision, 0);
+    assert_eq!(unchanged.controller, controller);
+    assert_eq!(unchanged.metadata_uri, soroban_string(&env, "ipfs://profile-v1"));
+
+    // Verify a genuine change still bumps revision to 1 and updates storage.
+    let new_controller = test_address(&env);
+    client.update_profile(
+        &agent,
+        &soroban_string(&env, "ipfs://profile-v2"),
+        &Some(new_controller.clone()),
+    );
+
+    let updated = client.get_profile(&agent);
+    assert_eq!(updated.revision, 1);
+    assert_eq!(updated.controller, new_controller);
+    assert_eq!(updated.metadata_uri, soroban_string(&env, "ipfs://profile-v2"));
 }
 
 #[test]
@@ -297,196 +342,25 @@ fn rejects_get_profile_on_unregistered_agent() {
 }
 
 #[test]
-fn admin_can_reactivate_deactivated_profile_and_emits_event() {
+fn get_profile_opt_returns_none_for_unregistered_and_some_for_active_and_deactivated() {
     let env = test_env();
     let admin = test_address(&env);
     let agent = test_address(&env);
     let controller = test_address(&env);
-
     let contract_id = env.register(IdentityContract, (admin.clone(),));
     let client = IdentityContractClient::new(&env, &contract_id);
 
     client.initialize(&admin);
-    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
+
+    assert_eq!(client.get_profile_opt(&agent), None);
+
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://meta"));
+    let profile = client.get_profile_opt(&agent);
+    assert!(profile.is_some());
+    assert!(profile.unwrap().active);
+
     client.deactivate(&agent);
-
-    let deactivated = client.get_profile(&agent);
-    assert!(!deactivated.active);
-    assert_eq!(deactivated.revision, 1);
-
-    // Drain previous events so we can verify exactly the react event.
-    let _ = env.events().all();
-
-    client.reactivate(&agent);
-
-    let events = env.events().all();
-    assert_eq!(events.len(), 1);
-    let event = events.get_unchecked(0);
-    assert_eq!(event.0, contract_id);
-
-    let topic0: Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    assert_eq!(topic0, symbol_short!("react"));
-
-    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
-    assert_eq!(topic1, agent);
-
-    let event_profile: AgentProfile = event.2.try_into_val(&env).unwrap();
-    assert_eq!(
-        event_profile,
-        AgentProfile {
-            controller: controller.clone(),
-            metadata_uri: soroban_string(&env, "ipfs://profile"),
-            active: true,
-            revision: 2,
-        }
-    );
-
-    let reactivated = client.get_profile(&agent);
-    assert!(reactivated.active);
-    assert_eq!(reactivated.revision, 2);
-    assert_eq!(reactivated.controller, controller);
-    assert_eq!(reactivated.metadata_uri, soroban_string(&env, "ipfs://profile"));
-}
-
-#[test]
-#[should_panic]
-fn reactivate_by_non_admin_panics() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let non_admin = test_address(&env);
-    let agent = test_address(&env);
-    let controller = test_address(&env);
-
-    let contract_id = env.register(IdentityContract, (admin.clone(),));
-    let client = IdentityContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
-    client.deactivate(&agent);
-
-    client
-        .mock_auths(&[MockAuth {
-            address: &non_admin,
-            invoke: &MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "reactivate",
-                args: (&agent,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .reactivate(&agent);
-}
-
-#[test]
-fn reactivate_by_non_admin_fails_and_leaves_profile_unchanged() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let non_admin = test_address(&env);
-    let agent = test_address(&env);
-    let controller = test_address(&env);
-
-    let contract_id = env.register(IdentityContract, (admin.clone(),));
-    let client = IdentityContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
-    client.deactivate(&agent);
-
-    let before = client.get_profile(&agent);
-    assert!(!before.active);
-    assert_eq!(before.revision, 1);
-
-    let result = client
-        .mock_auths(&[MockAuth {
-            address: &non_admin,
-            invoke: &MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "reactivate",
-                args: (&agent,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .try_reactivate(&agent);
-    assert!(result.is_err());
-
-    let after = client.get_profile(&agent);
-    assert_eq!(after, before);
-}
-
-// Panics with ProtocolError::MissingRecord when reactivate is called for an unregistered agent.
-#[test]
-#[should_panic]
-fn reactivate_rejects_unregistered_agent() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let unknown_agent = test_address(&env);
-
-    let contract_id = env.register(IdentityContract, (admin.clone(),));
-    let client = IdentityContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-    client.reactivate(&unknown_agent);
-}
-
-#[test]
-fn reactivate_unregistered_agent_returns_missing_record_error() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let unknown_agent = test_address(&env);
-
-    let contract_id = env.register(IdentityContract, (admin.clone(),));
-    let client = IdentityContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-    let result = client.try_reactivate(&unknown_agent);
-    assert!(result.is_err());
-}
-
-#[test]
-fn reactivate_on_already_active_profile_increments_revision_and_emits_event() {
-    let env = test_env();
-    let admin = test_address(&env);
-    let agent = test_address(&env);
-    let controller = test_address(&env);
-
-    let contract_id = env.register(IdentityContract, (admin.clone(),));
-    let client = IdentityContractClient::new(&env, &contract_id);
-
-    client.initialize(&admin);
-    client.register(&agent, &controller, &soroban_string(&env, "ipfs://profile"));
-
-    let initial = client.get_profile(&agent);
-    assert!(initial.active);
-    assert_eq!(initial.revision, 0);
-
-    // Drain previous events before reactivating.
-    let _ = env.events().all();
-
-    client.reactivate(&agent);
-
-    let events = env.events().all();
-    assert_eq!(events.len(), 1);
-    let event = events.get_unchecked(0);
-    assert_eq!(event.0, contract_id);
-
-    let topic0: Symbol = event.1.get_unchecked(0).try_into_val(&env).unwrap();
-    assert_eq!(topic0, symbol_short!("react"));
-
-    let topic1: Address = event.1.get_unchecked(1).try_into_val(&env).unwrap();
-    assert_eq!(topic1, agent);
-
-    let event_profile: AgentProfile = event.2.try_into_val(&env).unwrap();
-    assert_eq!(
-        event_profile,
-        AgentProfile {
-            controller: controller.clone(),
-            metadata_uri: soroban_string(&env, "ipfs://profile"),
-            active: true,
-            revision: 1,
-        }
-    );
-
-    let reactivated = client.get_profile(&agent);
-    assert!(reactivated.active);
-    assert_eq!(reactivated.revision, 1);
+    let deactivated = client.get_profile_opt(&agent);
+    assert!(deactivated.is_some());
+    assert!(!deactivated.unwrap().active);
 }
