@@ -3,7 +3,8 @@
 //! Agent identity registry for Lily Protocol.
 
 use lily_common::{
-    bump_instance, require, require_auth_or_error, require_non_empty, ProtocolError,
+    bump_instance, checked_inc, require, require_auth_or_error, require_non_empty, ProtocolError,
+    PROTOCOL_VERSION,
 };
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, unwrap::UnwrapOptimized, Address, Env,
@@ -56,14 +57,13 @@ impl IdentityContract {
     /// The initial admin must match the address pinned by the constructor at
     /// deploy time, preventing initialization front-running.
     pub fn initialize(env: Env, admin: Address) {
-        admin.require_auth();
-
         require(
             &env,
             !env.storage().instance().has(&DataKey::Initialized),
             ProtocolError::AlreadyInitialized,
         );
         require_auth_or_error(&admin, &env);
+        require_initial_admin(&env, &admin);
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         bump_instance(&env);
@@ -73,6 +73,18 @@ impl IdentityContract {
     /// Return whether the contract has been initialized.
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Initialized)
+    }
+
+    /// Return the shared protocol interface version.
+    #[must_use]
+    pub fn version(_env: Env) -> u32 {
+        PROTOCOL_VERSION
+    }
+
+    /// Return the current registry configuration.
+    #[must_use]
+    pub fn get_config(env: Env) -> IdentityConfig {
+        IdentityConfig { admin: get_admin(&env) }
     }
 
     /// Register a new agent profile controlled by a specific address.
@@ -114,6 +126,11 @@ impl IdentityContract {
         let metadata_changed = profile.metadata_uri != metadata_uri;
         let controller_changed =
             new_controller.as_ref().is_some_and(|next| next != &profile.controller);
+
+        if !metadata_changed && !controller_changed {
+            bump_instance(&env);
+            return;
+        }
 
         profile.metadata_uri = metadata_uri;
         if let Some(next_controller) = new_controller {
@@ -161,14 +178,21 @@ impl IdentityContract {
     }
 
     /// Re-enable a previously deactivated agent profile through admin action.
+    ///
+    /// Repeated calls on an already active profile are a no-op and do not
+    /// increment the revision or emit an event.
     pub fn reactivate(env: Env, agent: Address) {
         ensure_initialized(&env);
         let admin = get_admin(&env);
-        admin.require_auth();
+        require_auth_or_error(&admin, &env);
 
         let mut profile = get_profile_internal(&env, &agent);
+        if profile.active {
+            bump_instance(&env);
+            return;
+        }
         profile.active = true;
-        profile.revision += 1;
+        profile.revision = checked_inc(&env, profile.revision);
 
         env.storage().persistent().set(&DataKey::Profile(agent.clone()), &profile);
         bump_instance(&env);
