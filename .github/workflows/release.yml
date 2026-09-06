@@ -47,6 +47,7 @@ jobs:
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             dist/*.wasm \
+            dist/manifest.json \
             dist/SHA256SUMS \
             dist/PROVENANCE.txt \
             --clobber

@@ -87,6 +87,18 @@ artifacts: build-wasm
 	done
 	@./scripts/generate-manifest.sh
 
+artifacts-smoke:
+	@./scripts/test-artifacts-smoke.sh
+
+prove-contract-artifacts-runtime:
+	@./scripts/prove-contract-artifacts-runtime.sh
+
+test-manifest:
+	@./scripts/check-nio-60-acceptance.sh
+
+verify:
+	@./scripts/verify.sh
+
 ci: fmt-check lint test doc
 
 clean:

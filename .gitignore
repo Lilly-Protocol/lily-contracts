@@ -7,5 +7,6 @@
 .stellar
 dist
 coverage
+**/.agent-nio/
 **/test_snapshots/
 deployed-contracts.json
