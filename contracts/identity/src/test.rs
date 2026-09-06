@@ -8,6 +8,11 @@ use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::testutils::{Events, MockAuth, MockAuthInvoke};
 use soroban_sdk::{symbol_short, FromVal, IntoVal, Symbol, TryIntoVal, Val, Vec};
 
+fn event_has_topic(env: &soroban_sdk::Env, topics: &Vec<Val>, expected: &str) -> bool {
+    let expected: Val = Symbol::new(env, expected).into_val(env);
+    topics.iter().any(|topic| topic == expected)
+}
+
 #[test]
 fn data_key_encodings_are_stable() {
     let env = test_env();
