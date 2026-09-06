@@ -2,7 +2,10 @@
 
 //! Shared Soroban primitives used across Lily Protocol contracts.
 
-use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env, String, Symbol};
+use soroban_sdk::{
+    contracterror, contracttype, panic_with_error, Address, Env, IntoVal, String, Symbol,
+    TryFromVal, Val,
+};
 
 /// Maximum basis points accepted by percentage-based configuration.
 pub const MAX_BPS: u32 = 10_000;
@@ -39,6 +42,12 @@ pub enum ProtocolError {
     WalletAlreadyBound = 9,
     /// Raised when a reentrancy guard is already held in the current call.
     ReentrantCall = 10,
+    /// Raised when a payer has no wallet binding while creating a payment intent.
+    WalletNotBound = 11,
+    /// Raised when a payer's wallet binding is disabled.
+    WalletDisabled = 12,
+    /// Raised when a payment intent exceeds the payer's configured spend limit.
+    SpendLimitExceeded = 13,
 }
 
 /// Shared payment status used by settlement-oriented contracts.
@@ -118,6 +127,28 @@ pub fn require_auth_or_error(addr: &Address, env: &Env) {
 /// consumers can branch on it explicitly.
 pub fn require_caller(env: &Env, caller: &Address, expected: &Address) {
     require(env, caller == expected, ProtocolError::Unauthorized);
+}
+
+/// Increment a counter with overflow protection, raising a typed error on overflow.
+pub fn checked_inc(env: &Env, value: u64) -> u64 {
+    value.checked_add(1).unwrap_or_else(|| panic_with_error!(env, ProtocolError::InvalidInput))
+}
+
+/// Reject disabled wallet bindings for state-mutating operations.
+pub fn require_enabled(env: &Env, enabled: bool) {
+    require(env, enabled, ProtocolError::InvalidInput);
+}
+
+/// Read a value from instance storage, panicking with a typed error if absent.
+pub fn read_instance<K, V>(env: &Env, key: K) -> V
+where
+    K: IntoVal<Env, Val>,
+    V: TryFromVal<Env, Val>,
+{
+    env.storage()
+        .instance()
+        .get(&key)
+        .unwrap_or_else(|| panic_with_error!(env, ProtocolError::MissingRecord))
 }
 
 /// Reentrancy guard backed by an instance-storage flag.
