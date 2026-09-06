@@ -20,6 +20,10 @@ if [ "${CHECK_TOOLING_STRICT:-0}" = "1" ]; then
   STRICT=1
 fi
 
+# Derive repo root from the script's own directory so the script works even
+# when REPO_ROOT is not exported by the caller.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 missing_count=0
 
 if command -v rustc >/dev/null 2>&1; then
@@ -46,7 +50,7 @@ else
   missing_count=$((missing_count + 1))
 fi
 
-# Extract soroban-sdk major version from workspace
+# Extract soroban-sdk major version: prefer Cargo.lock, fall back to Cargo.toml
 SDK_MAJOR=""
 if [ -f "$REPO_ROOT/Cargo.lock" ]; then
   SDK_MAJOR="$(sed -n '/name = "soroban-sdk"/{n;s/version = "\([0-9]*\).*/\1/p;}' "$REPO_ROOT/Cargo.lock" | head -n 1)"
@@ -56,17 +60,9 @@ if [ -z "$SDK_MAJOR" ] && [ -f "$REPO_ROOT/Cargo.toml" ]; then
 fi
 SDK_MAJOR="${SDK_MAJOR:-22}"
 
-# Extract soroban-sdk major version from Cargo.toml or Cargo.lock
-SDK_MAJOR=""
-if [ -f "$REPO_ROOT/Cargo.toml" ]; then
-  SDK_MAJOR=$(grep -E "^[[:space:]]*soroban-sdk[[:space:]]*=" "$REPO_ROOT/Cargo.toml" | head -n 1 | grep -oE "[0-9]+" | head -n 1)
-fi
-if [ -z "$SDK_MAJOR" ] && [ -f "$REPO_ROOT/Cargo.lock" ]; then
-  SDK_MAJOR=$(grep -A 1 'name = "soroban-sdk"' "$REPO_ROOT/Cargo.lock" | grep "version =" | head -n 1 | grep -oE "[0-9]+" | head -n 1)
-fi
-
 if command -v stellar >/dev/null 2>&1; then
-  have stellar stellar --version
+  printf "stellar: "
+  stellar --version
 else
   printf "stellar: not installed\n"
   missing_count=$((missing_count + 1))
@@ -75,7 +71,8 @@ fi
 if command -v rustc >/dev/null 2>&1 && rustc --print target-list | grep -qx "wasm32v1-none"; then
   printf "wasm target available in toolchain list: yes\n"
 else
-  miss wasm32v1-none-target "not in toolchain target list"
+  printf "wasm32v1-none-target: not in toolchain target list\n"
+  missing_count=$((missing_count + 1))
 fi
 
 if command -v rustc >/dev/null 2>&1 && [ -d "$(rustc --print sysroot)/lib/rustlib/wasm32v1-none/lib" ]; then
@@ -89,4 +86,3 @@ if [ "$STRICT" = "1" ] && [ "$missing_count" -gt 0 ]; then
   printf "\nError: %d required tool(s) missing in strict mode.\n" "$missing_count" >&2
   exit 1
 fi
-
