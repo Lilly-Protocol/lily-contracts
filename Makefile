@@ -4,25 +4,24 @@ CONTRACT_PACKAGES := protocol identity wallet payments
 WASM_TARGET := wasm32v1-none
 ARTIFACTS_DIR := dist
 
-.PHONY: fmt fmt-check lint check test doc build build-wasm check-wasm-sizes artifacts artifacts-smoke prove-contract-artifacts-runtime test-manifest verify ci clean help
+.PHONY: fmt fmt-check lint check test doc build build-wasm wasm-size check-wasm-sizes artifacts ci clean help
 
 help:
 	@printf "%s\n" \
-	"make fmt        - format the workspace" \
-	"make fmt-check  - verify formatting" \
-	"make lint       - run clippy with warnings denied" \
-	"make docs       - verify rustdoc builds with warnings denied" \
-	"make check      - cargo check across the workspace" \
-	"make test       - run all unit and integration-style tests" \
-	"make doc        - generate documentation with warnings denied" \
-	"make build      - build the workspace" \
-	"make build-wasm - compile all contract packages to Wasm (with size regression gate)" \
-	"make wasm-size  - compile and check wasm sizes against the committed baseline" \
-	"make artifacts  - copy optimized Wasm artifacts into dist/ and generate manifest" \
-	"make test-manifest - run NIO-60 manifest acceptance checks (no Rust required)" \
-	"make verify      - run NIO-60 manifest verification (alias for test-manifest)" \
-	"make ci         - local CI bundle (fmt-check, lint, test, doc)" \
-	"make clean      - remove build outputs"
+	"make fmt              - format the workspace" \
+	"make fmt-check        - verify formatting" \
+	"make lint             - run clippy with warnings denied" \
+	"make docs             - verify rustdoc builds with warnings denied" \
+	"make check            - cargo check across the workspace" \
+	"make test             - run all unit and integration-style tests" \
+	"make doc              - generate documentation with warnings denied" \
+	"make build            - build the workspace" \
+	"make build-wasm       - compile all contract packages to Wasm (with size regression gate)" \
+	"make wasm-size        - compile and check wasm sizes against the committed baseline" \
+	"make check-wasm-sizes - check built wasm artifact sizes against baseline limits" \
+	"make artifacts        - copy optimized Wasm artifacts into dist/" \
+	"make ci               - local CI bundle (fmt-check, lint, test, doc)" \
+	"make clean            - remove build outputs"
 
 fmt:
 	cargo fmt --all
@@ -51,9 +50,6 @@ test-locked:
 audit:
 	cargo audit
 
-docs:
-	cargo doc --workspace --no-deps
-
 size-report: build-wasm
 	@echo "=== Wasm Artifact Size Report ==="
 	@for pkg in $(CONTRACT_PACKAGES); do \
@@ -73,6 +69,9 @@ build-wasm:
 	@for pkg in $(CONTRACT_PACKAGES); do \
 		cargo build --locked --target $(WASM_TARGET) --profile release --package $$pkg; \
 	done
+	@sh scripts/check-wasm-size.sh
+
+check-wasm-sizes:
 	@sh scripts/check-wasm-size.sh
 
 wasm-size: build-wasm

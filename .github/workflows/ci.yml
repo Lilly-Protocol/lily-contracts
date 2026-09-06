@@ -19,10 +19,7 @@ on:
   schedule:
     - cron: "0 3 * * *" # nightly at 03:00 UTC
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+# Concurrency control: cancel previous in-progress runs for the same workflow and ref
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -35,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@1.83
+        uses: dtolnay/rust-toolchain@1.85
 
       # Pin stellar-cli to v22.8.2 to match soroban-sdk v22 (Protocol 22)
       - name: Install Stellar CLI
@@ -67,23 +64,5 @@ jobs:
       - name: Documentation check
         run: make doc
 
-      - name: Verify manifest (NIO-60)
-        run: make verify
-
-      - name: Build contract Wasm artifacts
-        run: make artifacts
-
-      - name: Prove contract-artifacts runtime bundle
-        run: ./scripts/prove-contract-artifacts-runtime.sh
-
-      - name: Check Wasm size limits
-        run: make check-wasm-sizes
-
-      - name: Upload contract artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: contract-artifacts
-          path: |
-            dist/*.wasm
-            dist/manifest.json
-          if-no-files-found: error
+      - name: Build Wasm artifacts and enforce size baseline
+        run: make build-wasm

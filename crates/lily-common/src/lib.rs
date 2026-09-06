@@ -2,10 +2,16 @@
 
 //! Shared Soroban primitives used across Lily Protocol contracts.
 
-use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{
+    contracterror, contracttype, panic_with_error, Address, Env, IntoVal, String, Symbol,
+    TryFromVal, Val,
+};
 
 /// Maximum basis points accepted by percentage-based configuration.
 pub const MAX_BPS: u32 = 10_000;
+
+/// Maximum length accepted for storage-bound metadata and reference strings.
+pub const MAX_STRING_LEN: u32 = 512;
 
 /// Shared on-chain protocol interface version exposed by every contract.
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -21,7 +27,6 @@ pub const INSTANCE_BUMP_AMOUNT: u32 = 172_800;
 /// Numeric discriminants are part of the on-wire encoding; new variants are
 /// appended at the end so previously encoded values keep their identity.
 #[contracterror]
-#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[non_exhaustive]
 #[repr(u32)]
@@ -37,12 +42,16 @@ pub enum ProtocolError {
     WalletAlreadyBound = 9,
     /// Raised when a reentrancy guard is already held in the current call.
     ReentrantCall = 10,
+    /// Raised when a payer has no wallet binding while creating a payment intent.
+    WalletNotBound = 11,
+    /// Raised when a payer's wallet binding is disabled.
+    WalletDisabled = 12,
+    /// Raised when a payment intent exceeds the payer's configured spend limit.
+    SpendLimitExceeded = 13,
 }
 
 /// Shared payment status used by settlement-oriented contracts.
-#[non_exhaustive]
 #[contracttype]
-#[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum PaymentStatus {
@@ -66,6 +75,38 @@ pub fn require(env: &Env, condition: bool, error: ProtocolError) {
     if !condition {
         panic_with_error!(env, error);
     }
+}
+
+/// Checked increment for revision/id counters shared by contract crates.
+///
+/// # Panics
+/// Raises [`ProtocolError::ArithmeticOverflow`] when `value == u64::MAX`.
+#[must_use]
+pub fn checked_inc(env: &Env, value: u64) -> u64 {
+    value
+        .checked_add(1)
+        .unwrap_or_else(|| panic_with_error!(env, ProtocolError::ArithmeticOverflow))
+}
+
+/// Read a required value from instance storage.
+///
+/// This centralizes the fail-fast semantics used by configuration getters:
+/// missing required instance state is treated as a contract invariant failure.
+#[must_use]
+pub fn read_instance<K, V>(env: &Env, key: K) -> V
+where
+    K: IntoVal<Env, Val>,
+    V: TryFromVal<Env, Val>,
+{
+    env.storage()
+        .instance()
+        .get(&key)
+        .unwrap_or_else(|| panic_with_error!(env, ProtocolError::MissingRecord))
+}
+
+/// Require an enabled state before applying a state transition.
+pub fn require_enabled(env: &Env, enabled: bool) {
+    require(env, enabled, ProtocolError::InvalidInput);
 }
 
 /// Reject empty Soroban strings for storage-bound metadata fields.
@@ -120,6 +161,28 @@ pub fn require_caller(env: &Env, caller: &Address, expected: &Address) {
     require(env, caller == expected, ProtocolError::Unauthorized);
 }
 
+/// Increment a counter with overflow protection, raising a typed error on overflow.
+pub fn checked_inc(env: &Env, value: u64) -> u64 {
+    value.checked_add(1).unwrap_or_else(|| panic_with_error!(env, ProtocolError::InvalidInput))
+}
+
+/// Reject disabled wallet bindings for state-mutating operations.
+pub fn require_enabled(env: &Env, enabled: bool) {
+    require(env, enabled, ProtocolError::InvalidInput);
+}
+
+/// Read a value from instance storage, panicking with a typed error if absent.
+pub fn read_instance<K, V>(env: &Env, key: K) -> V
+where
+    K: IntoVal<Env, Val>,
+    V: TryFromVal<Env, Val>,
+{
+    env.storage()
+        .instance()
+        .get(&key)
+        .unwrap_or_else(|| panic_with_error!(env, ProtocolError::MissingRecord))
+}
+
 /// Reentrancy guard backed by an instance-storage flag.
 ///
 /// `acquire` panics with [`ProtocolError::ReentrantCall`] when the flag is
@@ -148,6 +211,7 @@ impl NonReentrantGuard {
     ///
     /// # Panics
     /// Raises [`ProtocolError::ReentrantCall`] if the guard is already held.
+    #[must_use]
     pub fn acquire(env: &Env, key: Symbol) -> Self {
         require(env, !env.storage().instance().has(&key), ProtocolError::ReentrantCall);
         env.storage().instance().set(&key, &true);
@@ -170,7 +234,7 @@ pub fn bump_instance(env: &Env) {
 
 #[cfg(test)]
 mod test {
-    use super::{require_caller, NonReentrantGuard, ProtocolError};
+    use super::{checked_inc, require_caller, NonReentrantGuard, ProtocolError};
     use crate::require;
     use soroban_sdk::{
         contract, contractimpl, symbol_short, testutils::Address as _, Address, Env,
@@ -230,6 +294,20 @@ mod test {
 
     fn register(env: &Env) -> Address {
         env.register(Gatekeeper, ())
+    }
+
+    #[test]
+    fn checked_inc_increments_regular_values() {
+        let env = env();
+        assert_eq!(checked_inc(&env, 0), 1);
+        assert_eq!(checked_inc(&env, u64::MAX - 1), u64::MAX);
+    }
+
+    #[test]
+    #[should_panic = "Error(Contract, #11)"]
+    fn checked_inc_raises_typed_overflow() {
+        let env = env();
+        let _ = checked_inc(&env, u64::MAX);
     }
 
     #[test]
