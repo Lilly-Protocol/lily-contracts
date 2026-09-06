@@ -1,0 +1,53 @@
+name: Release Wasm artifacts
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release-wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Wasm artifacts
+        run: make artifacts
+
+      - name: Record artifact provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(awk -F'"' '/^version = "/ {print $2; exit}' Cargo.toml)"
+          COMMIT="$(git rev-parse HEAD)"
+          printf 'version=%s\ntag=%s\ncommit=%s\nprofile=release\n' \
+            "$VERSION" "${{ github.event.release.tag_name }}" "$COMMIT" > dist/PROVENANCE.txt
+          (
+            cd dist
+            sha256sum *.wasm > SHA256SUMS
+          )
+
+      - name: Attach Wasm artifacts to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/*.wasm \
+            dist/SHA256SUMS \
+            dist/PROVENANCE.txt \
+            --clobber
+          
