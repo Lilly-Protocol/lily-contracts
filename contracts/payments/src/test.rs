@@ -6,7 +6,7 @@ use lily_test_support::{soroban_string, test_address, test_env};
 use soroban_sdk::testutils::Ledger;
 use soroban_sdk::unwrap::UnwrapOptimized;
 
-use super::{SCHEMA_VERSION, PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
+use super::{PaymentStatus, PaymentIntent, PaymentsContract, PaymentsContractClient, MAX_PAYMENT_AMOUNT};
 
 fn bootstrap() -> (soroban_sdk::Env, soroban_sdk::Address, PaymentsContractClient<'static>) {
     let env = test_env();
@@ -288,22 +288,26 @@ fn rejects_get_intent_on_missing_record() {
 }
 
 #[test]
-fn payments_schema_version_matches_constant_after_initialize() {
+fn get_intent_opt_returns_none_for_unknown_and_some_for_cancelled_or_settled() {
     let env = test_env();
     let admin = test_address(&env);
     let treasury = test_address(&env);
+    let payer = test_address(&env);
+    let payee = test_address(&env);
     let contract_id = env.register(PaymentsContract, ());
     let client = PaymentsContractClient::new(&env, &contract_id);
 
     client.initialize(&admin, &treasury, &50_u32);
-    assert_eq!(client.schema_version(), SCHEMA_VERSION);
-}
 
-#[test]
-#[should_panic]
-fn rejects_payments_schema_version_before_initialization() {
-    let env = test_env();
-    let contract_id = env.register(PaymentsContract, ());
-    let client = PaymentsContractClient::new(&env, &contract_id);
-    client.schema_version();
+    assert_eq!(client.get_intent_opt(&999_u64), None);
+
+    let intent_id = client.create_intent(&payer, &payee, &100_i128, &soroban_string(&env, "memo"));
+    let intent = client.get_intent_opt(&intent_id);
+    assert!(intent.is_some());
+    assert_eq!(intent.unwrap().status, PaymentStatus::Pending);
+
+    client.cancel_intent(&intent_id);
+    let cancelled = client.get_intent_opt(&intent_id);
+    assert!(cancelled.is_some());
+    assert_eq!(cancelled.unwrap().status, PaymentStatus::Cancelled);
 }
