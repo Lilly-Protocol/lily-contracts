@@ -18,7 +18,7 @@ help:
 	"make build            - build the workspace" \
 	"make build-wasm       - compile all contract packages to Wasm (with size regression gate)" \
 	"make wasm-size        - compile and check wasm sizes against the committed baseline" \
-	"make check-wasm-sizes - check built wasm artifact sizes against the baseline" \
+	"make check-wasm-sizes - check built wasm artifact sizes against baseline limits" \
 	"make artifacts        - copy optimized Wasm artifacts into dist/" \
 	"make ci               - local CI bundle (fmt-check, lint, test, doc)" \
 	"make clean            - remove build outputs"
@@ -50,9 +50,6 @@ test-locked:
 audit:
 	cargo audit
 
-docs:
-	cargo doc --workspace --no-deps
-
 size-report: build-wasm
 	@echo "=== Wasm Artifact Size Report ==="
 	@for pkg in $(CONTRACT_PACKAGES); do \
@@ -72,6 +69,9 @@ build-wasm:
 	@for pkg in $(CONTRACT_PACKAGES); do \
 		cargo build --locked --target $(WASM_TARGET) --profile release --package $$pkg; \
 	done
+	@sh scripts/check-wasm-size.sh
+
+check-wasm-sizes:
 	@sh scripts/check-wasm-size.sh
 
 wasm-size: build-wasm
