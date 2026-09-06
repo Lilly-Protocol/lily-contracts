@@ -18,7 +18,7 @@ help:
 	"make build            - build the workspace" \
 	"make build-wasm       - compile all contract packages to Wasm (with size regression gate)" \
 	"make wasm-size        - compile and check wasm sizes against the committed baseline" \
-	"make check-wasm-sizes - check built wasm artifacts against the committed baseline (no build; what CI's size step runs)" \
+	"make check-wasm-sizes - check built wasm artifact sizes against baseline limits" \
 	"make artifacts        - copy optimized Wasm artifacts into dist/" \
 	"make ci               - local CI bundle (fmt-check, lint, test, doc)" \
 	"make clean            - remove build outputs"
@@ -50,9 +50,6 @@ test-locked:
 audit:
 	cargo audit
 
-docs:
-	cargo doc --workspace --no-deps
-
 size-report: build-wasm
 	@echo "=== Wasm Artifact Size Report ==="
 	@for pkg in $(CONTRACT_PACKAGES); do \
@@ -74,11 +71,12 @@ build-wasm:
 	done
 	@sh scripts/check-wasm-size.sh
 
+check-wasm-sizes:
+	@sh scripts/check-wasm-size.sh
+
 wasm-size: build-wasm
 	@echo "wasm size regression gate: PASS"
 
-# Size gate CI runs (see .github/workflows/ci.yml size-check step):
-# checks already-built artifacts against wasm-size-baseline.json without rebuilding.
 check-wasm-sizes:
 	@sh scripts/check-wasm-sizes.sh
 
