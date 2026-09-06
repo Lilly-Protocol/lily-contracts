@@ -1,5 +1,8 @@
 [package]
 name = "payments"
+description = "Lily Protocol payment intents with asynchronous creation, settlement and cancellation on Soroban."
+keywords.workspace = true
+categories.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,10 +19,12 @@ doctest = false
 [dependencies]
 soroban-sdk = { workspace = true }
 lily-common = { workspace = true }
+wallet = { path = "../wallet" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+identity = { path = "../identity" }
 
 [lints]
 workspace = true
