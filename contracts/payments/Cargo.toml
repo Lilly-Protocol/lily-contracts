@@ -25,7 +25,6 @@ wallet = { path = "../wallet" }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
 identity = { path = "../identity" }
-wallet = { path = "../wallet" }
 
 [lints]
 workspace = true
