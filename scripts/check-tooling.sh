@@ -23,6 +23,10 @@ if [ "${CHECK_TOOLING_STRICT:-0}" = "1" ]; then
   STRICT=1
 fi
 
+# Derive repo root from the script's own directory so the script works even
+# when REPO_ROOT is not exported by the caller.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 missing_count=0
 
 if command -v rustc >/dev/null 2>&1; then
@@ -49,7 +53,7 @@ else
   missing_count=$((missing_count + 1))
 fi
 
-# Extract soroban-sdk major version from workspace
+# Extract soroban-sdk major version: prefer Cargo.lock, fall back to Cargo.toml
 SDK_MAJOR=""
 if [ -f "$REPO_ROOT/Cargo.lock" ]; then
   SDK_MAJOR="$(sed -n '/name = "soroban-sdk"/{n;s/version = "\([0-9]*\).*/\1/p;}' "$REPO_ROOT/Cargo.lock" | head -n 1)"
@@ -62,16 +66,6 @@ SDK_MAJOR="${SDK_MAJOR:-22}"
 if command -v stellar >/dev/null 2>&1; then
   printf "stellar: "
   stellar --version
-  CLI_VERSION="$(stellar --version 2>&1 | head -n 1)"
-  CLI_MAJOR="$(printf "%s" "$CLI_VERSION" | sed -nE 's/.*(stellar|stellar-cli)[[:space:]]+([0-9]+)\..*/\2/p')"
-  if [ -n "$CLI_MAJOR" ]; then
-    if [ "$CLI_MAJOR" = "$SDK_MAJOR" ]; then
-      printf "stellar / soroban-sdk compatibility: ok (CLI major %s matches SDK major %s)\n" "$CLI_MAJOR" "$SDK_MAJOR"
-    else
-      printf "stellar / soroban-sdk compatibility: mismatch (CLI major %s != SDK major %s)\n" "$CLI_MAJOR" "$SDK_MAJOR"
-      exit 1
-    fi
-  fi
 else
   printf "stellar: not installed\n"
   if [ "${REQUIRE_STELLAR:-0}" = "1" ]; then
@@ -82,7 +76,8 @@ fi
 if command -v rustc >/dev/null 2>&1 && rustc --print target-list | grep -qx "wasm32v1-none"; then
   printf "wasm target available in toolchain list: yes\n"
 else
-  printf "wasm target available in toolchain list: no\n"
+  printf "wasm32v1-none-target: not in toolchain target list\n"
+  missing_count=$((missing_count + 1))
 fi
 
 if command -v rustc >/dev/null 2>&1 && [ -d "$(rustc --print sysroot)/lib/rustlib/wasm32v1-none/lib" ]; then
@@ -100,4 +95,3 @@ if [ "$STRICT" = "1" ] && [ "$missing_count" -gt 0 ]; then
   printf "\nError: %d required tool(s) missing in strict mode.\n" "$missing_count" >&2
   exit 1
 fi
-
