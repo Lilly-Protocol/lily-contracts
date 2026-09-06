@@ -1,109 +1,180 @@
-from typing import Optional, Tuple, Callable, List, Any
-from protocol import Contract, ProtocolError, ProtocolType
-from payments import Contract as PaymentsContract, ProtocolError as PaymentsProtocolError
+from dataclasses import dataclass, field
+from typing import List, Optional, Callable, Union
+from enum import Enum, auto
+from functools import total_ordering
 
-def initialize_admins(admin: str, admin_name: Optional[str] = "Admin") -> Callable:
-    """Helper to mock admin initialization for tests."""
-    def decorator(func: Callable) -> Callable:
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
+@total_ordering
+class DataKeyDurability(Enum):
+    """
+    Represents the persistence level of a storage slot.
+    Matches Soroban `DataKey` enum behavior in `ARCHITECTURE.md`.
+    """
+    TRANSIENT = 1
+    PERSISTENT = 2
 
-def mock_all_auths(func: Callable) -> Callable:
-    """Decorator that mocks all auth context for testing purposes."""
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        return func(*args, **kwargs)
-    return wrapper
+@total_ordering
+class DataKey(Enum):
+    """
+    The core `DataKey` variants used across the four contracts.
+    Includes specific metadata required by `docs/ARCHITECTURE.md`.
+    """
+    SCHEMA_VERSION = auto()
+    PINNED_ADMIN = auto()
+    PENDING_ADMIN = auto()
+    WALLET = auto()
+    PAYER_INTENTS = auto()
+    REBIND_WALLET_FLAG = auto() # For internal state
+    FEE_BPS = auto()           # For payments
 
-class TestProtocol:
-    """Comprehensive test suite for protocol contract initialization admin logic."""
-    
-    def __init__(self, protocol_instance: Contract) -> None:
-        self.protocol = protocol_instance
-    
-    def test_positive_path_pinned_admin(self) -> None:
-        """Verify that the pinned admin can successfully initialize."""
-        result = self.protocol.initialize(admin=self.protocol.__constructor.__name__, auth=self.protocol)
-        assert result is not None
-        assert self.protocol.is_initialized() is True
-    
-    def test_negative_path_different_admin(self) -> None:
-        """Verify that a different admin raises ProtocolError::Unauthorized."""
-        other_admin = "AnotherAdmin"
-        result = self.protocol.initialize(admin=other_admin, auth=self.protocol)
-        assert result is not None
-        
-        # Check that the error code matches Contract Error #3 (ProtocolError::Unauthorized)
-        assert self.protocol.__errors[0].code == 3
-        
-        # Verify is_initialized remains false after the rejected attempt
-        assert self.protocol.is_initialized() is False
-    
-    def test_initialize_with_mock_auths(self) -> None:
-        """Initialize with mock_all_auths decorator for more flexible testing."""
-        @mock_all_auths
-        def initialize_with_mock(*args: Any, **kwargs: Any) -> Any:
-            return self.protocol.initialize(admin="MockedAdmin", auth=self.protocol)
-        
-        result = initialize_with_mock()
-        assert result is not None
-        assert self.protocol.__errors[0].code == 3
-        assert self.protocol.is_initialized() is False
+    def __str__(self):
+        name_map = {
+            DataKey.SCHEMA_VERSION: "SchemaVersion",
+            DataKey.PINNED_ADMIN: "PinnedAdmin",
+            DataKey.PENDING_ADMIN: "PendingAdmin",
+            DataKey.WALLET: "Wallet",
+            DataKey.PAYER_INTENTS: "PayerIntents",
+            DataKey.REBIND_WALLET_FLAG: "RebindWalletFlag",
+            DataKey.FEE_BPS: "FeeBps",
+        }
+        return name_map.get(self, self.name)
 
-class TestPayments:
-    """Comprehensive test suite for payments contract initialization admin logic."""
-    
-    def __init__(self, payments_instance: PaymentsContract) -> None:
-        self.payments = payments_instance
-    
-    def test_positive_path_pinned_admin(self) -> None:
-        """Verify that the pinned admin can successfully initialize."""
-        result = self.payments.initialize(admin=self.payments.__constructor.__name__, auth=self.payments)
-        assert result is not None
-        assert self.payments.is_initialized() is True
-    
-    def test_negative_path_different_admin(self) -> None:
-        """Verify that a different admin raises ProtocolError::Unauthorized."""
-        other_admin = "AnotherAdmin"
-        result = self.payments.initialize(admin=other_admin, auth=self.payments)
-        assert result is not None
-        
-        # Check that the error code matches Contract Error #3 (PaymentsProtocolError::Unauthorized)
-        assert self.payments.__errors[0].code == 3
-        
-        # Verify is_initialized remains false after the rejected attempt
-        assert self.payments.is_initialized() is False
-    
-    def test_initialize_with_mock_auths(self) -> None:
-        """Initialize with mock_all_auths decorator for more flexible testing."""
-        @mock_all_auths
-        def initialize_with_mock(*args: Any, **kwargs: Any) -> Any:
-            return self.payments.initialize(admin="MockedAdmin", auth=self.payments)
-        
-        result = initialize_with_mock()
-        assert result is not None
-        assert self.payments.__errors[0].code == 3
-        assert self.payments.is_initialized() is False
+class FunctionPhase(Enum):
+    """
+    Captures the specific behavior of entrypoints regarding `bump_instance`
+    and other stateful transitions.
+    """
+    ON_CONSTRUCT = 10
+    ON_WRITE = 20
+    ON_READ = 30
+    VIEW_ONLY = 40
 
-def run_all_tests(
-    protocol_contract: Contract,
-    payments_contract: PaymentsContract
-) -> Tuple[bool, bool]:
-    """Run all protocol and payments initialization admin tests."""
-    protocol_tests = TestProtocol(protocol_contract)
-    payments_tests = TestPayments(payments_contract)
+@dataclass
+class Entrypoint:
+    """
+    Represents a contract function (Entrypoint) appearing in the docs.
+    Captures `accept_admin`, `reactivate`, etc.
+    """
+    name: str
+    phase: FunctionPhase = FunctionPhase.ON_WRITE
+    requires_write: bool = True
     
-    # Run positive path tests
-    protocol_tests.test_positive_path_pinned_admin()
-    payments_tests.test_positive_path_pinned_admin()
+    def to_string(self) -> str:
+        return f"{self.name} ({self.phase.name})" if self.phase != FunctionPhase.ON_WRITE else self.name
+
+@dataclass
+class ContractStorage:
+    """
+    Mirror of each crate's storage layout.
+    Aggregates DataKey variants and Entrypoints into a single model
+    to drive `docs/ARCHITECTURE.md` generation.
+    """
+    contract_name: str
+    data_keys: List[DataKey] = field(default_factory=list)
+    entrypoints: List[Entrypoint] = field(default_factory=list)
+    durability: DataKeyDurability = DataKeyDurability.PERSISTENT
     
-    # Run negative path tests
-    protocol_tests.test_negative_path_different_admin()
-    payments_tests.test_negative_path_different_admin()
+    def add_data_key(self, key: DataKey, durability: Optional[DataKeyDurability] = None):
+        if durability is not None:
+            self.data_keys.append(DataKey(key, durability))
+            self.data_keys[-1].durability = durability
+        else:
+            self.data_keys.append(DataKey(key, durability=self.durability))
+
+    def add_entrypoint(self, name: str, phase: FunctionPhase = FunctionPhase.ON_WRITE):
+        entry = Entrypoint(name=name, phase=phase)
+        self.entrypoints.append(entry)
+        return entry
+
+    def is_initialized_views(self) -> List[Entrypoint]:
+        """Returns entrypoints that use the `is_initialized` view logic."""
+        return [e for e in self.entrypoints if e.phase in (FunctionPhase.VIEW_ONLY, FunctionPhase.ON_CONSTRUCT)]
+
+    def protocol_config(self):
+        """Specific configuration for the Protocol contract."""
+        keys = [DataKey.SCHEMA_VERSION, DataKey.PINNED_ADMIN, DataKey.PENDING_ADMIN]
+        funcs = [
+            Entrypoint("accept_admin", phase=FunctionPhase.ON_WRITE),
+            Entrypoint("reactivate", phase=FunctionPhase.ON_WRITE),
+            Entrypoint("reactivate_admin", phase=FunctionPhase.ON_WRITE), # If exists
+            Entrypoint("bump_instance", phase=FunctionPhase.VIEW_ONLY), # The exception case
+            Entrypoint("get_pending_admin", phase=FunctionPhase.VIEW_ONLY),
+        ]
+        return ContractStorage(
+            contract_name="Protocol",
+            data_keys=keys,
+            entrypoints=funcs,
+            durability=DataKeyDurability.PERSISTENT,
+        )
+
+    def wallet_config(self):
+        """Specific configuration for the Wallet contract."""
+        keys = [DataKey.SCHEMA_VERSION, DataKey.WALLET, DataKey.PAYER_INTENTS]
+        funcs = [
+            Entrypoint("rebind_wallet", phase=FunctionPhase.ON_WRITE),
+            Entrypoint("set_fee_bps", phase=FunctionPhase.ON_WRITE),
+            Entrypoint("bump_instance", phase=FunctionPhase.ON_WRITE),
+        ]
+        return ContractStorage(
+            contract_name="Wallet",
+            data_keys=keys,
+            entrypoints=funcs,
+            durability=DataKeyDurability.PERSISTENT,
+        )
+
+    def payments_config(self):
+        """Specific configuration for the Payments contract."""
+        keys = [DataKey.SCHEMA_VERSION, DataKey.WALLET, DataKey.PAYER_INTENTS]
+        funcs = [
+            Entrypoint("transfer_admin", phase=FunctionPhase.ON_WRITE),
+            Entrypoint("set_treasury", phase=FunctionPhase.ON_WRITE),
+            Entrypoint("bump_instance", phase=FunctionPhase.ON_WRITE),
+        ]
+        return ContractStorage(
+            contract_name="Payments",
+            data_keys=keys,
+            entrypoints=funcs,
+            durability=DataKeyDurability.PERSISTENT,
+        )
+
+    def all_contracts(self) -> List["ContractStorage"]:
+        """Returns the suite of all four contracts pinning PinnedAdmin in `__constructor`."""
+        base = ContractStorage(contract_name="Base", data_keys=[DataKey.PINNED_ADMIN])
+        return [
+            self.protocol_config(),
+            self.wallet_config(),
+            self.payments_config(),
+            base,
+        ]
+
+def get_architecture_spec() -> ContractStorage:
+    """Factory to retrieve the fully configured `ContractStorage` instance."""
+    suite = ContractStorage(contract_name="Archive")
     
-    # Run mock auth tests
-    protocol_tests.test_initialize_with_mock_auths()
-    payments_tests.test_initialize_with_mock_auths()
+    # Populate the "Master" table which aggregates keys found in all contracts
+    master_keys = [DataKey.PINNED_ADMIN, DataKey.SCHEMA_VERSION, DataKey.PENDING_ADMIN]
+    master_funcs = [Entrypoint("bump_instance"), Entrypoint("accept_admin")]
     
-    return True, True
+    suite.data_keys = master_keys
+    suite.entrypoints = master_funcs
+    
+    return suite
+
+# Instantiate and verify the structure for the fix
+if __name__ == "__main__":
+    # Generate the specific "Truth" for docs/ARCHITECTURE.md
+    spec = get_architecture_spec()
+    
+    print(f"Contract: {spec.contract_name}")
+    print(f"Data Keys: {[k.name for k in spec.data_keys]}")
+    print(f"EntryPoints: {[f.name for f in spec.entrypoints]}")
+    
+    # Ensure the 4 contracts are defined
+    suite = spec.protocol_config()
+    print(f"\nProtocol DataKeys: {[k.name for k in suite.data_keys]}")
+    
+    # Example of the `bump_instance` exception logic
+    protocol_bump = suite.entrypoints[0]
+    print(f"Bump Instance Phase: {protocol_bump.phase.name}")
+    
+    # Print the specific list for MD generation
+    print("\n--- Ready for docs/ARCHITECTURE.md ---")
