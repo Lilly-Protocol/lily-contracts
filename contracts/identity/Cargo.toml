@@ -1,5 +1,8 @@
 [package]
 name = "identity"
+description = "Lily Protocol agent identity registry on Soroban: registration, profiles and controllers."
+keywords.workspace = true
+categories.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,6 +23,7 @@ lily-common = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 lily-test-support = { workspace = true }
+proptest = { workspace = true, features = ["attr-macro"] }
 
 [lints]
 workspace = true
