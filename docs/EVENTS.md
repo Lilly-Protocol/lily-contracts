@@ -1,10 +1,10 @@
 # Contract Event Schema
 
-This document lists every event emitted by the Lily Protocol contracts, grouped by contract. Events follow Soroban conventions: each entry has a topic tuple (starting with a short symbol) and a typed payload. The topic is designed for efficient filtering; the payload carries the full post-transition state.
+This document lists every event emitted by the Lily Protocol contracts, grouped by contract. Events follow Soroban conventions: each entry has a topic tuple (starting with a short symbol) and a typed payload. The tables below mirror the current `env.events().publish(...)` call sites so indexers can rely on the documented topic arity and payload shape.
 
 ## `contracts/identity`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
 | `("init", admin)` | `IdentityConfig` | `initialize(env, admin)` | `admin: Address` |
 | `("register", agent)` | `AgentProfile` | `register(env, agent, controller, metadata_uri)` | `controller: Address`, `metadata_uri: String`, `active: bool`, `revision: u64` |
@@ -15,7 +15,7 @@ This document lists every event emitted by the Lily Protocol contracts, grouped 
 
 ## `contracts/protocol`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
 | `("init", admin)` | `ProtocolConfig` | `initialize(env, admin, treasury, fee_bps)` | `admin: Address`, `treasury: Address`, `fee_bps: u32` |
 | `("fee", admin)` | `u32` | `set_fee_bps(env, fee_bps)` | The new fee value in basis points. |
@@ -25,7 +25,7 @@ This document lists every event emitted by the Lily Protocol contracts, grouped 
 
 ## `contracts/payments`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
 | `("init", admin)` | `PaymentsConfig` | `initialize(env, admin, treasury, fee_bps)` | `admin: Address`, `treasury: Address`, `fee_bps: u32` |
 | `("create", id)` | `PaymentIntent` | `create_intent(...)` | `id: u64`, `payer_agent: Address`, `payee_agent: Address`, `amount: i128`, `memo: String`, `settlement_reference: String`, `status: PaymentStatus` |
@@ -37,7 +37,7 @@ This document lists every event emitted by the Lily Protocol contracts, grouped 
 
 ## `contracts/wallet`
 
-| Topic | Payload type | Trigger function | Payload fields |
+| Topic | Payload type | Trigger function | Payload fields / meaning |
 |---|---|---|---|
 | `("init", admin)` | `WalletConfig` | `initialize(env, admin)` | `admin: Address` |
 | `("bind", agent)` | `WalletBinding` | `bind_wallet(env, agent, wallet, settlement_asset, spend_limit)` | `wallet: Address`, `settlement_asset: Symbol`, `spend_limit: i128`, `enabled: bool`, `revision: u64` |
@@ -56,6 +56,12 @@ pub enum PaymentStatus {
     Cancelled,
 }
 
+pub struct ProtocolConfig {
+    pub admin: Address,
+    pub treasury: Address,
+    pub fee_bps: u32,
+}
+
 // contracts/identity/src/lib.rs
 pub struct IdentityConfig {
     pub admin: Address,
@@ -66,13 +72,6 @@ pub struct AgentProfile {
     pub metadata_uri: String,
     pub active: bool,
     pub revision: u64,
-}
-
-// contracts/protocol/src/lib.rs
-pub struct ProtocolConfig {
-    pub admin: Address,
-    pub treasury: Address,
-    pub fee_bps: u32,
 }
 
 // contracts/payments/src/lib.rs
@@ -90,6 +89,7 @@ pub struct PaymentIntent {
     pub memo: String,
     pub settlement_reference: String,
     pub status: PaymentStatus,
+    pub created_at: u64,
 }
 
 // contracts/wallet/src/lib.rs
@@ -104,4 +104,4 @@ pub struct WalletBinding {
 
 ## Versioning
 
-Event topics and payload shapes are considered part of the contract's observable interface. Any future change that alters a topic element or payload field should be documented in both this file and in the release notes so that indexers and off-chain integrations can migrate.
+Event topics and payload shapes are part of the contracts' observable interface. Any future change that alters a topic element or payload field should be documented in this file and in the release notes so indexers and off-chain integrations can migrate deliberately.
