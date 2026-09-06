@@ -11,7 +11,7 @@ Thanks for contributing to Lily Protocol’s Soroban contracts.
 
 ## Local setup
 
-1. Install Rust. The repository pins the toolchain in `rust-toolchain.toml` (currently Rust 1.83), so `rustup` will automatically install the correct version when you run any cargo command in the workspace.
+1. Install Rust. The repository pins the toolchain in `rust-toolchain.toml` (currently Rust 1.85), so `rustup` will automatically install the correct version when you run any cargo command in the workspace. Keep the pinned toolchain in sync with `rust-toolchain.toml`, the workspace `rust-version`, and the CI toolchain.
 2. Install `stellar-cli` using the official Stellar instructions.
    Use a release from the same major line as the workspace
    `soroban-sdk` (currently the `v22` line; CI pins
