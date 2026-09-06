@@ -19,6 +19,7 @@ on:
   schedule:
     - cron: "0 3 * * *" # nightly at 03:00 UTC
 
+# Concurrency control: cancel previous in-progress runs for the same workflow and ref
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

@@ -66,14 +66,6 @@ fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
     }
 }
 
-fn payment_status_symbol(status: PaymentStatus) -> soroban_sdk::Symbol {
-    match status {
-        PaymentStatus::Pending => symbol_short!("pending"),
-        PaymentStatus::Settled => symbol_short!("settled"),
-        PaymentStatus::Cancelled => symbol_short!("cancelled"),
-    }
-}
-
 #[contractimpl]
 impl PaymentsContract {
     /// Capture the intended initial admin at deploy time.
@@ -116,6 +108,30 @@ impl PaymentsContract {
             next_intent_id: 1,
         };
         env.events().publish((symbol_short!("init"), admin), config);
+    }
+
+    /// Update the bound wallet contract address.
+    pub fn set_wallet(env: Env, wallet: Address) {
+        ensure_initialized(&env);
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Wallet, &wallet);
+        bump_instance(&env);
+
+        env.events().publish((symbol_short!("wallet"), admin), wallet);
+    }
+
+    /// Return the bound wallet contract address.
+    pub fn get_wallet(env: Env) -> Address {
+        ensure_initialized(&env);
+        bump_instance(&env);
+        env.storage()
+            .instance()
+            .get(&DataKey::Wallet)
+            .unwrap_or_else(|| {
+                soroban_sdk::panic_with_error!(&env, ProtocolError::MissingRecord)
+            })
     }
 
     /// Return whether the contract has been initialized.

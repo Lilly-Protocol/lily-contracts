@@ -294,3 +294,27 @@ fn rejects_get_profile_on_unregistered_agent() {
     client.initialize(&admin);
     client.get_profile(&unknown_agent);
 }
+
+#[test]
+fn get_profile_opt_returns_none_for_unregistered_and_some_for_active_and_deactivated() {
+    let env = test_env();
+    let admin = test_address(&env);
+    let agent = test_address(&env);
+    let controller = test_address(&env);
+    let contract_id = env.register(IdentityContract, (admin.clone(),));
+    let client = IdentityContractClient::new(&env, &contract_id);
+
+    client.initialize(&admin);
+
+    assert_eq!(client.get_profile_opt(&agent), None);
+
+    client.register(&agent, &controller, &soroban_string(&env, "ipfs://meta"));
+    let profile = client.get_profile_opt(&agent);
+    assert!(profile.is_some());
+    assert!(profile.unwrap().active);
+
+    client.deactivate(&agent);
+    let deactivated = client.get_profile_opt(&agent);
+    assert!(deactivated.is_some());
+    assert!(!deactivated.unwrap().active);
+}
