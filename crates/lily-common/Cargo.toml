@@ -1,5 +1,8 @@
 [package]
 name = "lily-common"
+description = "Shared no_std primitives for Lily Protocol Soroban contracts: typed errors, validation helpers and TTL bumps."
+keywords.workspace = true
+categories.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +17,9 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [lints]
 workspace = true

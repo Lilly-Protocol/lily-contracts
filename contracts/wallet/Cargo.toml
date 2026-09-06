@@ -1,5 +1,8 @@
 [package]
 name = "wallet"
+description = "Lily Protocol wallet binding and spend-limit policies for agents on Soroban."
+keywords.workspace = true
+categories.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
